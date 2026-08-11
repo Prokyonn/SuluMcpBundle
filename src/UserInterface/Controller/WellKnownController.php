@@ -15,6 +15,7 @@ namespace Sulu\Mcp\UserInterface\Controller;
 
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * RFC 9728 Protected Resource Metadata (PRM) and RFC 8414 Authorization Server Metadata.
@@ -22,6 +23,9 @@ use Symfony\Component\Routing\Attribute\Route;
  * These well-known endpoints enable MCP clients (e.g., Claude.ai) to discover
  * the OAuth authorization server and its capabilities for authenticating with
  * the MCP resource server.
+ *
+ * The two paths are pinned to the host root by RFC 8414 and RFC 9728 and are
+ * therefore the only routes of this bundle outside the `_mcp` namespace.
  *
  * @internal
  */
@@ -31,6 +35,7 @@ class WellKnownController
      * @param list<string> $scopes
      */
     public function __construct(
+        private readonly UrlGeneratorInterface $urlGenerator,
         private readonly string $serverUrl,
         private readonly string $mcpPath = '/admin/_mcp',
         private readonly array $scopes = ['mcp:tools', 'mcp:resources'],
@@ -67,14 +72,25 @@ class WellKnownController
 
         return new JsonResponse([
             'issuer' => $base,
-            'authorization_endpoint' => $base.'/admin/mcp/authorize',
-            'token_endpoint' => $base.'/mcp/token',
+            'authorization_endpoint' => $base.$this->routePath('sulu_mcp_oauth_authorize'),
+            'token_endpoint' => $base.$this->routePath('sulu_mcp_oauth_token'),
             'response_types_supported' => ['code'],
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'code_challenge_methods_supported' => ['S256'],
             'token_endpoint_auth_methods_supported' => ['client_secret_post', 'client_secret_basic', 'none'],
             'scopes_supported' => $this->scopes,
-            'registration_endpoint' => $base.'/mcp/register',
+            'registration_endpoint' => $base.$this->routePath('sulu_mcp_client_registration'),
         ]);
+    }
+
+    /**
+     * Only the path comes from the router; the host stays the configured
+     * server_url, which remains authoritative behind a proxy or TLS tunnel.
+     * Generating it keeps a renamed route from silently drifting out of the
+     * discovery document.
+     */
+    private function routePath(string $route): string
+    {
+        return $this->urlGenerator->generate($route, [], UrlGeneratorInterface::ABSOLUTE_PATH);
     }
 }

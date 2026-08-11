@@ -3,19 +3,25 @@
 #   sulu_mcp:
 #       resource: '@SuluMcpBundle/config/routes.yaml'
 #
-# This file imports the OAuth controllers required for MCP authentication
-# (the MCP transport endpoint itself is registered by symfony/mcp-bundle at
-# the configured path -- defaults to /admin/_mcp so the request lands in the
-# admin kernel, where Sulu services tagged sulu.context: admin are available).
+# Every route of this bundle lives under the `_mcp` namespace. The underscore
+# follows the Symfony/Sulu convention for framework-owned paths (_profiler,
+# _wdt, Sulu's /admin/p) and keeps the bundle from colliding with a project's
+# own /mcp pages. The two exceptions are the RFC 8414/9728 discovery documents,
+# which the specs pin to /.well-known/ on the host root.
+#
+# The `/admin/` prefix routes the requests into the admin kernel, where Sulu
+# services tagged sulu.context: admin are available. The MCP transport endpoint
+# itself is registered by symfony/mcp-bundle at the configured `mcp_path`,
+# which defaults to /admin/_mcp.
 sulu_mcp_oauth:
     resource: ../src/UserInterface/Controller/
     type: attribute
 
 sulu_mcp_oauth_authorize:
-    path: /admin/mcp/authorize
+    path: /admin/_mcp/authorize
     controller: league.oauth2_server.controller.authorization::indexAction
 
 sulu_mcp_oauth_token:
-    path: /mcp/token
+    path: /admin/_mcp/token
     controller: league.oauth2_server.controller.token::indexAction
     methods: [POST]
