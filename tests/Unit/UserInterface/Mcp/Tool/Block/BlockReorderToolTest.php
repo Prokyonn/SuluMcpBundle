@@ -18,26 +18,27 @@ use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Article\Application\Message\ModifyArticleMessage;
-use Sulu\Article\Domain\Model\ArticleInterface;
+use Sulu\Article\Domain\Model\Article;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
-use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
-use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Content\ContentTypeResolver;
 use Sulu\Mcp\Application\Security\ContentSecurityContextResolver;
 use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
+use Sulu\Mcp\Tests\Unit\Fakes\FakeGroupProvider;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Block\BlockReorderTool;
 use Sulu\Page\Application\Message\ModifyPageMessage;
-use Sulu\Page\Domain\Model\PageInterface;
+use Sulu\Page\Domain\Model\Page;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
 use Sulu\Snippet\Application\Message\ModifySnippetMessage;
-use Sulu\Snippet\Domain\Model\SnippetInterface;
+use Sulu\Snippet\Domain\Model\Snippet;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -47,31 +48,57 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
 #[CoversClass(ContentTypeResolver::class)]
 final class BlockReorderToolTest extends TestCase
 {
-    private MessageBusInterface&MockObject $messageBus;
-    private PageRepositoryInterface&MockObject $pageRepository;
-    private ArticleRepositoryInterface&MockObject $articleRepository;
-    private SnippetRepositoryInterface&MockObject $snippetRepository;
-    private ContentManagerInterface&MockObject $contentManager;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<MessageBusInterface>
+     */
+    private ObjectProphecy $messageBus;
+
+    /**
+     * @var ObjectProphecy<PageRepositoryInterface>
+     */
+    private ObjectProphecy $pageRepository;
+
+    /**
+     * @var ObjectProphecy<ArticleRepositoryInterface>
+     */
+    private ObjectProphecy $articleRepository;
+
+    /**
+     * @var ObjectProphecy<SnippetRepositoryInterface>
+     */
+    private ObjectProphecy $snippetRepository;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $permissionChecker;
+
     private ContentSecurityContextResolver $contentSecurityContextResolver;
+
     private BlockReorderTool $tool;
 
     protected function setUp(): void
     {
-        $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->pageRepository = $this->createMock(PageRepositoryInterface::class);
-        $this->articleRepository = $this->createMock(ArticleRepositoryInterface::class);
-        $this->snippetRepository = $this->createMock(SnippetRepositoryInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([]);
+        $this->messageBus = $this->prophesize(MessageBusInterface::class);
+        $this->pageRepository = $this->prophesize(PageRepositoryInterface::class);
+        $this->articleRepository = $this->prophesize(ArticleRepositoryInterface::class);
+        $this->snippetRepository = $this->prophesize(SnippetRepositoryInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
+        $groupProvider = new FakeGroupProvider();
         $this->contentSecurityContextResolver = new ContentSecurityContextResolver(new ArticleSecurityContextResolver($groupProvider));
         $this->tool = new BlockReorderTool(
-            $this->messageBus,
-            new ContentTypeResolver($this->pageRepository, $this->articleRepository, $this->snippetRepository),
-            $this->contentManager,
-            $this->permissionChecker,
+            $this->messageBus->reveal(),
+            new ContentTypeResolver($this->pageRepository->reveal(), $this->articleRepository->reveal(), $this->snippetRepository->reveal()),
+            $this->contentManager->reveal(),
+            $this->permissionChecker->reveal(),
             $this->contentSecurityContextResolver,
         );
     }
@@ -98,13 +125,11 @@ final class BlockReorderToolTest extends TestCase
             ['type' => 'text', 'title' => 'Third'],
         ]);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($expectedMessageClass) {
-                $this->assertInstanceOf($expectedMessageClass, $envelope->getMessage());
-
-                return $envelope->with(new HandledStamp(null, 'handler'));
-            });
+        $this->messageBus->dispatch(Argument::that(
+            static fn (Envelope $envelope): bool => $envelope->getMessage() instanceof $expectedMessageClass
+        ), Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(static fn (array $args): Envelope => $args[0]->with(new HandledStamp(null, 'handler')));
 
         $result = $this->tool->reorderBlocks($type, 'test-uuid', 'en', 'blocks', [2, 0, 1]);
 
@@ -116,7 +141,7 @@ final class BlockReorderToolTest extends TestCase
 
     public function testReorderBlocksReturnsErrorForUnsupportedType(): void
     {
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('media', 'test-uuid', 'en', 'blocks', [0]);
 
@@ -126,8 +151,8 @@ final class BlockReorderToolTest extends TestCase
 
     public function testReorderBlocksReturnsErrorWhenEntityNotFound(): void
     {
-        $this->pageRepository->method('getOneBy')->willThrowException(new \RuntimeException('not found'));
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->pageRepository->getOneBy(Argument::cetera())->willThrow(new \RuntimeException('not found'));
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'missing-uuid', 'en', 'blocks', [0]);
 
@@ -142,7 +167,7 @@ final class BlockReorderToolTest extends TestCase
             ['type' => 'text', 'title' => 'Third'],
         ]);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', [0, 1]);
 
@@ -158,7 +183,7 @@ final class BlockReorderToolTest extends TestCase
             ['type' => 'text', 'title' => 'Third'],
         ]);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', [0, 0, 1]);
 
@@ -174,7 +199,7 @@ final class BlockReorderToolTest extends TestCase
             ['type' => 'text', 'title' => 'Third'],
         ]);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', [0, 1, 5]);
 
@@ -189,9 +214,9 @@ final class BlockReorderToolTest extends TestCase
             ['type' => 'text', 'title' => 'Second'],
         ]);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp(null, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(static fn (array $args): Envelope => $args[0]->with(new HandledStamp(null, 'handler')));
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', ['1', '0']);
 
@@ -201,7 +226,7 @@ final class BlockReorderToolTest extends TestCase
 
     public function testReorderBlocksRejectsNonIntegerIndices(): void
     {
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', ['first']);
 
@@ -241,9 +266,9 @@ final class BlockReorderToolTest extends TestCase
             ['_id' => 'c', 'type' => 'text', 'title' => 'Third'],
         ]);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp(null, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(static fn (array $args): Envelope => $args[0]->with(new HandledStamp(null, 'handler')));
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', null, ['c', 'a', 'b']);
 
@@ -258,7 +283,7 @@ final class BlockReorderToolTest extends TestCase
             ['_id' => 'b', 'type' => 'text', 'title' => 'Second'],
         ]);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', null, ['a', 'missing']);
 
@@ -268,7 +293,7 @@ final class BlockReorderToolTest extends TestCase
 
     public function testReorderRequiresNewOrderOrBlockIds(): void
     {
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks');
 
@@ -279,7 +304,7 @@ final class BlockReorderToolTest extends TestCase
 
     public function testReorderRejectsBothNewOrderAndBlockIds(): void
     {
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->reorderBlocks('page', 'test-uuid', 'en', 'blocks', [0, 1], ['a', 'b']);
 
@@ -294,10 +319,10 @@ final class BlockReorderToolTest extends TestCase
         ]);
 
         $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::EDIT, 'en'));
+            ->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::EDIT, 'en'));
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
@@ -309,22 +334,24 @@ final class BlockReorderToolTest extends TestCase
      */
     private function setupEntityWithBlocks(string $type, array $blocks): void
     {
-        $entity = $this->createMock(match ($type) {
-            'page' => PageInterface::class,
-            'article' => ArticleInterface::class,
-            'snippet' => SnippetInterface::class,
-            default => PageInterface::class,
-        });
+        $entity = match ($type) {
+            'article' => new Article(),
+            'snippet' => new Snippet(),
+            default => new Page(),
+        };
+        if ($entity instanceof Page) {
+            $entity->setWebspaceKey('');
+        }
 
         match ($type) {
-            'article' => $this->articleRepository->method('getOneBy')->willReturn($entity),
-            'snippet' => $this->snippetRepository->method('getOneBy')->willReturn($entity),
-            default => $this->pageRepository->method('getOneBy')->willReturn($entity),
+            'article' => $this->articleRepository->getOneBy(Argument::cetera())->willReturn($entity),
+            'snippet' => $this->snippetRepository->getOneBy(Argument::cetera())->willReturn($entity),
+            default => $this->pageRepository->getOneBy(Argument::cetera())->willReturn($entity),
         };
 
-        $dimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([
+        $dimensionContent = $entity->createDimensionContent();
+        $this->contentManager->resolve(Argument::cetera())->willReturn($dimensionContent);
+        $this->contentManager->normalize(Argument::cetera())->willReturn([
             'template' => 'default',
             'title' => 'Test',
             'blocks' => $blocks,

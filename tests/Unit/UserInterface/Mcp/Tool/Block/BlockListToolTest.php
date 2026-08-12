@@ -16,21 +16,22 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Block;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Article\Domain\Model\ArticleInterface;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Article\Domain\Model\Article;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
-use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
-use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Content\ContentTypeResolver;
 use Sulu\Mcp\Application\Security\ContentSecurityContextResolver;
 use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
+use Sulu\Mcp\Tests\Unit\Fakes\FakeGroupProvider;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Block\BlockListTool;
-use Sulu\Page\Domain\Model\PageInterface;
+use Sulu\Page\Domain\Model\Page;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 
@@ -38,28 +39,50 @@ use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 #[CoversClass(ContentTypeResolver::class)]
 final class BlockListToolTest extends TestCase
 {
-    private PageRepositoryInterface&MockObject $pageRepository;
-    private ArticleRepositoryInterface&MockObject $articleRepository;
-    private SnippetRepositoryInterface&MockObject $snippetRepository;
-    private ContentManagerInterface&MockObject $contentManager;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<PageRepositoryInterface>
+     */
+    private ObjectProphecy $pageRepository;
+
+    /**
+     * @var ObjectProphecy<ArticleRepositoryInterface>
+     */
+    private ObjectProphecy $articleRepository;
+
+    /**
+     * @var ObjectProphecy<SnippetRepositoryInterface>
+     */
+    private ObjectProphecy $snippetRepository;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $permissionChecker;
+
     private ContentSecurityContextResolver $contentSecurityContextResolver;
+
     private BlockListTool $tool;
 
     protected function setUp(): void
     {
-        $this->pageRepository = $this->createMock(PageRepositoryInterface::class);
-        $this->articleRepository = $this->createMock(ArticleRepositoryInterface::class);
-        $this->snippetRepository = $this->createMock(SnippetRepositoryInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([]);
+        $this->pageRepository = $this->prophesize(PageRepositoryInterface::class);
+        $this->articleRepository = $this->prophesize(ArticleRepositoryInterface::class);
+        $this->snippetRepository = $this->prophesize(SnippetRepositoryInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
+        $groupProvider = new FakeGroupProvider();
         $this->contentSecurityContextResolver = new ContentSecurityContextResolver(new ArticleSecurityContextResolver($groupProvider));
         $this->tool = new BlockListTool(
-            new ContentTypeResolver($this->pageRepository, $this->articleRepository, $this->snippetRepository),
-            $this->contentManager,
-            $this->permissionChecker,
+            new ContentTypeResolver($this->pageRepository->reveal(), $this->articleRepository->reveal(), $this->snippetRepository->reveal()),
+            $this->contentManager->reveal(),
+            $this->permissionChecker->reveal(),
             $this->contentSecurityContextResolver,
         );
     }
@@ -133,8 +156,8 @@ final class BlockListToolTest extends TestCase
 
     public function testListBlocksReturnsErrorForNotFound(): void
     {
-        $this->pageRepository->method('getOneBy')
-            ->willThrowException(new \RuntimeException('Not found'));
+        $this->pageRepository->getOneBy(Argument::cetera())
+            ->willThrow(new \RuntimeException('Not found'));
 
         $result = $this->tool->listBlocks('page', 'missing-uuid', 'en', 'blocks');
 
@@ -151,14 +174,13 @@ final class BlockListToolTest extends TestCase
 
     public function testListBlocksLoadsArticle(): void
     {
-        $article = $this->createMock(ArticleInterface::class);
-        $article->method('getUuid')->willReturn('article-uuid');
+        $article = new Article();
 
-        $this->articleRepository->method('getOneBy')->willReturn($article);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($article);
 
-        $dimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([
+        $dimensionContent = $article->createDimensionContent();
+        $this->contentManager->resolve(Argument::cetera())->willReturn($dimensionContent);
+        $this->contentManager->normalize(Argument::cetera())->willReturn([
             'blocks' => [
                 ['_id' => 'x', 'type' => 'section', 'title' => 'Intro'],
             ],
@@ -188,8 +210,8 @@ final class BlockListToolTest extends TestCase
         ]);
 
         $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::VIEW, 'en'));
+            ->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::VIEW, 'en'));
 
         $this->expectException(ToolCallException::class);
 
@@ -201,14 +223,14 @@ final class BlockListToolTest extends TestCase
      */
     private function setupPageWithBlocks(array $blocks): void
     {
-        $page = $this->createMock(PageInterface::class);
-        $page->method('getUuid')->willReturn('test-uuid');
+        $page = new Page();
+        $page->setWebspaceKey('');
 
-        $this->pageRepository->method('getOneBy')->willReturn($page);
+        $this->pageRepository->getOneBy(Argument::cetera())->willReturn($page);
 
-        $dimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([
+        $dimensionContent = $page->createDimensionContent();
+        $this->contentManager->resolve(Argument::cetera())->willReturn($dimensionContent);
+        $this->contentManager->normalize(Argument::cetera())->willReturn([
             'template' => 'default',
             'title' => 'Test Page',
             'blocks' => $blocks,
