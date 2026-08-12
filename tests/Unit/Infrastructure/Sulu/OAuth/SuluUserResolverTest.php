@@ -19,8 +19,8 @@ use PHPUnit\Framework\TestCase;
 use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Mcp\Infrastructure\Sulu\OAuth\SuluOAuthUser;
 use Sulu\Mcp\Infrastructure\Sulu\OAuth\SuluUserResolver;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 
 #[CoversClass(SuluUserResolver::class)]
 final class SuluUserResolverTest extends TestCase
@@ -34,11 +34,10 @@ final class SuluUserResolverTest extends TestCase
 
     public function testResolveFromSecurityTokenReturnsSuluOAuthUserWithUsername(): void
     {
-        $suluUser = $this->createMock(User::class);
-        $suluUser->method('getUserIdentifier')->willReturn('admin');
+        $suluUser = new User();
+        $suluUser->setUsername('admin');
 
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($suluUser);
+        $token = new UsernamePasswordToken($suluUser, 'main');
 
         $oauthUser = $this->resolver->resolveFromSecurityToken($token);
 
@@ -49,10 +48,9 @@ final class SuluUserResolverTest extends TestCase
 
     public function testResolveFromSecurityTokenThrowsForNonSuluUser(): void
     {
-        $genericUser = $this->createMock(UserInterface::class);
+        $genericUser = new InMemoryUser('admin', null);
 
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($genericUser);
+        $token = new UsernamePasswordToken($genericUser, 'main');
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Expected Sulu User entity');
