@@ -15,20 +15,20 @@ namespace Sulu\Mcp\Tests\Unit\Application\Security;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Sulu\Article\Domain\Model\Article;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormGroup;
-use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
-use Sulu\Content\Domain\Model\TemplateInterface;
 use Sulu\Mcp\Application\Security\ContentSecurityContextResolver;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
-use Sulu\Page\Domain\Model\PageInterface;
+use Sulu\Mcp\Tests\Unit\Fakes\FakeGroupProvider;
+use Sulu\Page\Domain\Model\Page;
 
 #[CoversClass(ContentSecurityContextResolver::class)]
 final class ContentSecurityContextResolverTest extends TestCase
 {
     public function testForEntityReturnsPageWebspaceContext(): void
     {
-        $page = $this->createMock(PageInterface::class);
-        $page->method('getWebspaceKey')->willReturn('example');
+        $page = new Page();
+        $page->setWebspaceKey('example');
 
         $resolver = $this->resolver();
 
@@ -44,15 +44,14 @@ final class ContentSecurityContextResolverTest extends TestCase
 
     public function testForEntityDelegatesArticleTemplateKeyToArticleResolver(): void
     {
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('default'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $resolver = new ContentSecurityContextResolver(new ArticleSecurityContextResolver($groupProvider));
 
-        $dimensionContent = $this->createMock(TemplateInterface::class);
-        $dimensionContent->method('getTemplateKey')->willReturn('blog_article');
+        $dimensionContent = (new Article())->createDimensionContent();
+        $dimensionContent->setTemplateKey('blog_article');
 
         self::assertSame('sulu.article.articles_blog', $resolver->forEntity('article', new \stdClass(), $dimensionContent));
     }
@@ -80,8 +79,7 @@ final class ContentSecurityContextResolverTest extends TestCase
 
     private function resolver(): ContentSecurityContextResolver
     {
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('default'),
         ]);
 

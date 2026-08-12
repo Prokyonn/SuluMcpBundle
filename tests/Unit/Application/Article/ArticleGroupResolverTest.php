@@ -14,9 +14,11 @@ declare(strict_types=1);
 namespace Sulu\Mcp\Tests\Unit\Application\Article;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Article\Domain\Model\ArticleInterface;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Article\Domain\Model\Article;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormGroup;
 use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
@@ -26,20 +28,30 @@ use Sulu\Mcp\Application\Article\ArticleGroupResolver;
 #[CoversClass(ArticleGroupResolver::class)]
 final class ArticleGroupResolverTest extends TestCase
 {
-    private GroupProviderInterface&MockObject $groupProvider;
-    private ContentManagerInterface&MockObject $contentManager;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<GroupProviderInterface>
+     */
+    private ObjectProphecy $groupProvider;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
     private ArticleGroupResolver $resolver;
 
     protected function setUp(): void
     {
-        $this->groupProvider = $this->createMock(GroupProviderInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->resolver = new ArticleGroupResolver($this->groupProvider, $this->contentManager);
+        $this->groupProvider = $this->prophesize(GroupProviderInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->resolver = new ArticleGroupResolver($this->groupProvider->reveal(), $this->contentManager->reveal());
     }
 
     public function testResolveByTemplateReturnsDefaultWhenTemplateIsNull(): void
     {
-        $this->groupProvider->expects($this->never())->method('getGroups');
+        $this->groupProvider->getGroups(Argument::any())->shouldNotBeCalled();
 
         $this->assertSame('default', $this->resolver->resolveByTemplate(null));
     }
@@ -51,7 +63,7 @@ final class ArticleGroupResolverTest extends TestCase
 
     public function testResolveByTemplateReturnsGroupIdentifierForMatchingTemplate(): void
     {
-        $this->groupProvider->method('getGroups')->willReturn([
+        $this->groupProvider->getGroups(Article::TEMPLATE_TYPE)->willReturn([
             'default' => new FormGroup('default', 'Default', ['standard']),
             'blog-group' => new FormGroup('blog-group', 'Blog', ['blog', 'news']),
         ]);
@@ -63,7 +75,7 @@ final class ArticleGroupResolverTest extends TestCase
 
     public function testResolveByTemplateFallsBackToDefaultForUnknownTemplate(): void
     {
-        $this->groupProvider->method('getGroups')->willReturn([
+        $this->groupProvider->getGroups(Article::TEMPLATE_TYPE)->willReturn([
             'blog-group' => new FormGroup('blog-group', 'Blog', ['blog']),
         ]);
 
@@ -72,19 +84,16 @@ final class ArticleGroupResolverTest extends TestCase
 
     public function testResolveByArticleDerivesGroupFromDraftTemplate(): void
     {
-        $article = $this->createMock(ArticleInterface::class);
+        $article = new Article();
+        $dimensionContent = $article->createDimensionContent();
 
-        $dimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->expects($this->once())
-            ->method('resolve')
-            ->with($article, [
-                'locale' => 'en',
-                'stage' => DimensionContentInterface::STAGE_DRAFT,
-            ])
-            ->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['template' => 'blog']);
+        $this->contentManager->resolve($article, [
+            'locale' => 'en',
+            'stage' => DimensionContentInterface::STAGE_DRAFT,
+        ])->shouldBeCalledOnce()->willReturn($dimensionContent);
+        $this->contentManager->normalize($dimensionContent)->willReturn(['template' => 'blog']);
 
-        $this->groupProvider->method('getGroups')->willReturn([
+        $this->groupProvider->getGroups(Article::TEMPLATE_TYPE)->willReturn([
             'blog-group' => new FormGroup('blog-group', 'Blog', ['blog']),
         ]);
 
@@ -93,21 +102,21 @@ final class ArticleGroupResolverTest extends TestCase
 
     public function testResolveByArticleReturnsDefaultWhenTemplateMissing(): void
     {
-        $article = $this->createMock(ArticleInterface::class);
+        $article = new Article();
+        $dimensionContent = $article->createDimensionContent();
 
-        $dimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([]);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($dimensionContent);
+        $this->contentManager->normalize($dimensionContent)->willReturn([]);
 
         $this->assertSame('default', $this->resolver->resolveByArticle($article, 'en'));
     }
 
     public function testResolveByArticleFallsBackToDefaultOnException(): void
     {
-        $article = $this->createMock(ArticleInterface::class);
+        $article = new Article();
 
-        $this->contentManager->method('resolve')
-            ->willThrowException(new \RuntimeException('boom'));
+        $this->contentManager->resolve(Argument::cetera())
+            ->willThrow(new \RuntimeException('boom'));
 
         $this->assertSame('default', $this->resolver->resolveByArticle($article, 'en'));
     }

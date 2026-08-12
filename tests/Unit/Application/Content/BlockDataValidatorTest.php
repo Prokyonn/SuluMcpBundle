@@ -14,8 +14,9 @@ declare(strict_types=1);
 namespace Sulu\Mcp\Tests\Unit\Application\Content;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
@@ -25,7 +26,8 @@ use Sulu\Mcp\Application\Content\BlockDataValidator;
 #[CoversClass(BlockDataValidator::class)]
 final class BlockDataValidatorTest extends TestCase
 {
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
+    use ProphecyTrait;
+
     private BlockDataValidator $validator;
 
     protected function setUp(): void
@@ -61,11 +63,7 @@ final class BlockDataValidatorTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->formMetadataProvider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'page' === $key ? $typed : null);
-
-        $this->validator = new BlockDataValidator($this->formMetadataProvider);
+        $this->validator = new BlockDataValidator($this->metadataProviderReturning('page', $typed));
     }
 
     public function testValidContentTreeReturnsNull(): void
@@ -189,9 +187,7 @@ final class BlockDataValidatorTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $provider = $this->createMock(MetadataProviderInterface::class);
-        $provider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'snippet' === $key ? $typed : null);
+        $provider = $this->metadataProviderReturning('snippet', $typed);
 
         $validator = new BlockDataValidator($provider);
 
@@ -224,9 +220,7 @@ final class BlockDataValidatorTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $provider = $this->createMock(MetadataProviderInterface::class);
-        $provider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'snippet' === $key ? $typed : null);
+        $provider = $this->metadataProviderReturning('snippet', $typed);
 
         $validator = new BlockDataValidator($provider);
 
@@ -264,9 +258,7 @@ final class BlockDataValidatorTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $provider = $this->createMock(MetadataProviderInterface::class);
-        $provider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'snippet' === $key ? $typed : null);
+        $provider = $this->metadataProviderReturning('snippet', $typed);
 
         $validator = new BlockDataValidator($provider);
 
@@ -320,10 +312,17 @@ final class BlockDataValidatorTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $provider = $this->createMock(MetadataProviderInterface::class);
-        $provider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'page' === $key ? $typed : null);
+        $provider = $this->metadataProviderReturning('page', $typed);
 
         return new BlockDataValidator($provider);
+    }
+
+    private function metadataProviderReturning(string $key, TypedFormMetadata $typed): MetadataProviderInterface
+    {
+        $provider = $this->prophesize(MetadataProviderInterface::class);
+        $provider->getMetadata($key, Argument::cetera())->willReturn($typed);
+        $provider->getMetadata(Argument::not($key), Argument::cetera())->willReturn(null);
+
+        return $provider->reveal();
     }
 }

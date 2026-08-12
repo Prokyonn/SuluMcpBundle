@@ -15,14 +15,17 @@ namespace Sulu\Mcp\Tests\Unit\Application\Security;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
-use Sulu\Component\Security\Authentication\UserInterface;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Mcp\Application\Security\AccessControlFilterFactory;
 use Symfony\Bundle\SecurityBundle\Security;
-use Symfony\Component\Security\Core\User\UserInterface as CoreUserInterface;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 
 #[CoversClass(AccessControlFilterFactory::class)]
 final class AccessControlFilterFactoryTest extends TestCase
 {
+    use ProphecyTrait;
+
     private const PERMISSIONS = [
         'view' => 64,
         'add' => 32,
@@ -35,21 +38,21 @@ final class AccessControlFilterFactoryTest extends TestCase
 
     public function testForPermissionReturnsUserAndBitmaskWhenAuthenticated(): void
     {
-        $user = $this->createMock(UserInterface::class);
-        $security = $this->createMock(Security::class);
-        $security->method('getUser')->willReturn($user);
+        $user = new User();
+        $security = $this->prophesize(Security::class);
+        $security->getUser()->willReturn($user);
 
-        $factory = new AccessControlFilterFactory($security, self::PERMISSIONS);
+        $factory = new AccessControlFilterFactory($security->reveal(), self::PERMISSIONS);
 
         self::assertSame(['user' => $user, 'permission' => 64], $factory->forPermission('view'));
     }
 
     public function testForPermissionReturnsNullUserWhenSecurityHasNoUser(): void
     {
-        $security = $this->createMock(Security::class);
-        $security->method('getUser')->willReturn(null);
+        $security = $this->prophesize(Security::class);
+        $security->getUser()->willReturn(null);
 
-        $factory = new AccessControlFilterFactory($security, self::PERMISSIONS);
+        $factory = new AccessControlFilterFactory($security->reveal(), self::PERMISSIONS);
 
         self::assertSame(['user' => null, 'permission' => 16], $factory->forPermission('edit'));
     }
@@ -66,11 +69,11 @@ final class AccessControlFilterFactoryTest extends TestCase
         // Symfony's core UserInterface can be satisfied by a user that is not a Sulu
         // UserInterface (e.g. an OAuth-only identity). Without the instanceof guard
         // this would leak a foreign user object into the accessControl filter.
-        $foreignUser = $this->createMock(CoreUserInterface::class);
-        $security = $this->createMock(Security::class);
-        $security->method('getUser')->willReturn($foreignUser);
+        $foreignUser = new InMemoryUser('foreign', null);
+        $security = $this->prophesize(Security::class);
+        $security->getUser()->willReturn($foreignUser);
 
-        $factory = new AccessControlFilterFactory($security, self::PERMISSIONS);
+        $factory = new AccessControlFilterFactory($security->reveal(), self::PERMISSIONS);
 
         self::assertSame(['user' => null, 'permission' => 64], $factory->forPermission('view'));
     }
