@@ -110,13 +110,13 @@ final class GetContextToolOutputSchemaTest extends TestCase
             'page' => [
                 'default' => [
                     'key' => 'default',
-                    'fields' => [
-                        ['name' => 'title', 'type' => 'text_line'],
-                        ['name' => 'blocks', 'type' => 'block', 'types' => [
-                            'text' => ['key' => 'text', 'fields' => [
-                                ['name' => 'content', 'type' => 'text_editor'],
-                            ]],
-                        ]],
+                    'label' => 'Default',
+                    'schema' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'title' => ['type' => 'string', 'x-sulu-type' => 'text_line'],
+                            'content' => ['x-sulu-type' => 'text_editor'],
+                        ],
                     ],
                 ],
             ],
@@ -124,7 +124,7 @@ final class GetContextToolOutputSchemaTest extends TestCase
 
         $blocks = $this->prophesize(BlocksResource::class);
         $blocks->getBlocks()->willReturn([
-            ['key' => 'text', 'label' => 'Text', 'fields' => [], 'available_in_templates' => ['default']],
+            ['key' => 'text', 'label' => 'Text', 'schema' => ['type' => 'object', 'properties' => []], 'available_in_templates' => ['default']],
         ]);
 
         $webspaces = $this->prophesize(WebspacesResource::class);
@@ -150,6 +150,39 @@ final class GetContextToolOutputSchemaTest extends TestCase
 
         $result = $tool->getContext('en');
 
+        $this->assertResultMatchesOutputSchema(GetContextTool::class, 'getContext', $result);
+    }
+
+    public function testEmptyLegendAndTemplatesStillMatchOutputSchema(): void
+    {
+        // PHP encodes an empty map as `[]`, not `{}` — a project whose templates use
+        // only unmapped field types produces exactly that, so the declared schema has
+        // to accept it or every such response is rejected by a strict client.
+        $templates = $this->prophesize(TemplatesResource::class);
+        $templates->getTemplates()->willReturn([]);
+
+        $blocks = $this->prophesize(BlocksResource::class);
+        $blocks->getBlocks()->willReturn([]);
+
+        $webspaces = $this->prophesize(WebspacesResource::class);
+        $webspaces->getWebspaces()->willReturn([]);
+
+        $extensionFields = $this->prophesize(ExtensionFieldsProvider::class);
+        $extensionFields->getExtensionFields()->willReturn(['seo' => [], 'excerpt' => []]);
+
+        $tool = new GetContextTool(
+            $templates->reveal(),
+            $blocks->reveal(),
+            $webspaces->reveal(),
+            new FieldValueExampleProvider(),
+            $extensionFields->reveal(),
+            $this->toolVisibilityResolver(),
+            $this->webspacePermissionResolver(),
+        );
+
+        $result = $tool->getContext('en');
+
+        self::assertSame([], $result['fieldTypes']);
         $this->assertResultMatchesOutputSchema(GetContextTool::class, 'getContext', $result);
     }
 }

@@ -19,8 +19,14 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
+use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\SchemaMetadataProvider;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
+use Sulu\Bundle\AdminBundle\Metadata\SchemaMetadata\PropertyMetadataMapper\BlockPropertyMetadataMapper;
+use Sulu\Bundle\AdminBundle\Metadata\SchemaMetadata\PropertyMetadataMapper\NumberPropertyMetadataMapper;
+use Sulu\Bundle\AdminBundle\Metadata\SchemaMetadata\PropertyMetadataMapper\TextPropertyMetadataMapper;
+use Sulu\Bundle\AdminBundle\Metadata\SchemaMetadata\PropertyMetadataMapperRegistry;
+use Sulu\Bundle\AdminBundle\Metadata\SchemaMetadata\PropertyMetadataMinMaxValueResolver;
 use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Component\Localization\Localization;
 use Sulu\Component\Security\Authorization\PermissionTypes;
@@ -34,12 +40,15 @@ use Sulu\Mcp\Application\Security\ToolPermissionChecker;
 use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Application\Security\ToolVisibilityResolver;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
+use Sulu\Mcp\Infrastructure\Sulu\Metadata\SchemaMetadataAdapter;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
 use Sulu\Mcp\Tests\Application\TestBundle\Metadata\TestGroupProvider;
+use Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Resource\Fixture\ArrayMetadataProvider;
 use Sulu\Mcp\UserInterface\Mcp\Resource\BlocksResource;
 use Sulu\Mcp\UserInterface\Mcp\Resource\TemplatesResource;
 use Sulu\Mcp\UserInterface\Mcp\Resource\WebspacesResource;
 use Sulu\Mcp\UserInterface\Mcp\Tool\GetContextTool;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
@@ -47,6 +56,28 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 final class GetContextToolTest extends TestCase
 {
     use ProphecyTrait;
+
+    /**
+     * Real schema generator over the mapper set Sulu actually registers, so the
+     * legend assertions below exercise genuine `x-sulu-type` output rather than a
+     * stand-in. Mirrors SchemaMetadataAdapterTest::buildAdapter().
+     */
+    private function schemaGenerator(): SchemaMetadataAdapter
+    {
+        $minMax = new PropertyMetadataMinMaxValueResolver();
+        $schemaMetadataProvider = null;
+        $locator = new ServiceLocator([
+            'text_line' => static fn () => new TextPropertyMetadataMapper($minMax),
+            'text_area' => static fn () => new TextPropertyMetadataMapper($minMax),
+            'number' => static fn () => new NumberPropertyMetadataMapper(),
+            'block' => static function() use (&$schemaMetadataProvider) {
+                return new BlockPropertyMetadataMapper($schemaMetadataProvider);
+            },
+        ]);
+        $schemaMetadataProvider = new SchemaMetadataProvider(new PropertyMetadataMapperRegistry($locator));
+
+        return new SchemaMetadataAdapter($schemaMetadataProvider, new ArrayMetadataProvider([]));
+    }
 
     /**
      * Real ToolVisibilityResolver (final) with a mocked checker that denies
@@ -126,7 +157,7 @@ final class GetContextToolTest extends TestCase
         $formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
         $formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
 
-        return new TemplatesResource($formMetadataProvider->reveal());
+        return new TemplatesResource($formMetadataProvider->reveal(), $this->schemaGenerator());
     }
 
     /**
@@ -138,7 +169,7 @@ final class GetContextToolTest extends TestCase
         $formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
         $formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
 
-        return new BlocksResource($formMetadataProvider->reveal());
+        return new BlocksResource($formMetadataProvider->reveal(), $this->schemaGenerator());
     }
 
     /**
@@ -207,7 +238,7 @@ final class GetContextToolTest extends TestCase
         $formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
         $formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
 
-        $templates = new TemplatesResource($formMetadataProvider->reveal());
+        $templates = new TemplatesResource($formMetadataProvider->reveal(), $this->schemaGenerator());
 
         $tool = new GetContextTool($templates, $this->emptyBlocksResource(), $this->webspacesResource(), new FieldValueExampleProvider(), $this->emptyExtensionFieldsProvider(), $this->toolVisibilityResolver(), $this->webspacePermissionResolver());
 
@@ -249,7 +280,7 @@ final class GetContextToolTest extends TestCase
         $formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
         $formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
 
-        $templates = new TemplatesResource($formMetadataProvider->reveal());
+        $templates = new TemplatesResource($formMetadataProvider->reveal(), $this->schemaGenerator());
 
         $tool = new GetContextTool($templates, $this->emptyBlocksResource(), $this->webspacesResource(), new FieldValueExampleProvider(), $this->emptyExtensionFieldsProvider(), $this->toolVisibilityResolver(), $this->webspacePermissionResolver());
 
