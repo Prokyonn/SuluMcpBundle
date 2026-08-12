@@ -27,6 +27,7 @@ use Sulu\Component\Webspace\Manager\WebspaceCollection;
 use Sulu\Component\Webspace\Manager\WebspaceManagerInterface;
 use Sulu\Component\Webspace\Webspace;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
+use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Security\AccessControlFilterFactory;
 use Sulu\Mcp\Application\Security\ToolPermissionChecker;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;

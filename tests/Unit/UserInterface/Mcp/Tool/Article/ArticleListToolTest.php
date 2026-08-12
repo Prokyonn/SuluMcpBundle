@@ -24,6 +24,7 @@ use Sulu\Article\Domain\Model\Article;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormGroup;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
+use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
 use Sulu\Mcp\Tests\Application\TestBundle\Metadata\TestGroupProvider;
@@ -210,7 +211,7 @@ final class ArticleListToolTest extends TestCase
 
     /**
      * Builds an ArticleListTool over Prophecy doubles, independent of the
-     * createMock() collaborators wired in setUp().
+     * collaborators wired in setUp().
      *
      * @return array{ArticleListTool, ObjectProphecy<ArticleRepositoryInterface>}
      */
