@@ -16,6 +16,7 @@ namespace Sulu\Mcp\UserInterface\Mcp\Tool\Media;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
 use Sulu\Bundle\MediaBundle\Entity\Collection;
+use Sulu\Bundle\MediaBundle\Entity\MediaInterface;
 use Sulu\Bundle\MediaBundle\Media\Manager\MediaManagerInterface;
 use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Component\Media\SystemCollections\SystemCollectionManagerInterface;
@@ -71,7 +72,11 @@ class MediaUpdateTool
 
             $media = $this->mediaManager->getById($id, $locale);
 
-            $collection = $media->getEntity()->getCollection();
+            // ApiWrapper::getEntity() has no return type at all (native or docblock), so
+            // PHPStan sees `mixed` -- Media always wraps a MediaInterface entity.
+            /** @var MediaInterface $entity */
+            $entity = $media->getEntity();
+            $collection = $entity->getCollection();
             if (SystemCollectionManagerInterface::COLLECTION_TYPE === $collection->getType()->getKey()) {
                 $this->permissionChecker->check('sulu.media.system_collections', PermissionTypes::VIEW, $locale);
             }

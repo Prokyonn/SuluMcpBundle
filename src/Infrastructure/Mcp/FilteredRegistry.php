@@ -124,7 +124,9 @@ final readonly class FilteredRegistry implements RegistryInterface
         /** @var array<string, Tool> $tools */
         $tools = [];
         foreach ($this->inner->getTools(null, null)->references as $name => $tool) {
-            if ($this->visibilityResolver->isVisible((string) $name)) {
+            // Page::$references is typed as Tool|Prompt|ResourceTemplate|Resource for every
+            // getter, but getTools() only ever populates it with Tool instances.
+            if ($tool instanceof Tool && $this->visibilityResolver->isVisible((string) $name)) {
                 $tools[$name] = $tool;
             }
         }
@@ -203,9 +205,9 @@ final readonly class FilteredRegistry implements RegistryInterface
     {
         $offset = 0;
         if (null !== $cursor) {
-            $decodedCursor = base64_decode($cursor, true);
+            $decodedCursor = \base64_decode($cursor, true);
 
-            if (false === $decodedCursor || !is_numeric($decodedCursor)) {
+            if (false === $decodedCursor || !\is_numeric($decodedCursor)) {
                 throw new InvalidCursorException($cursor);
             }
 
@@ -216,7 +218,7 @@ final readonly class FilteredRegistry implements RegistryInterface
             }
         }
 
-        return array_values(\array_slice($items, $offset, $limit));
+        return \array_values(\array_slice($items, $offset, $limit));
     }
 
     /**
@@ -228,8 +230,8 @@ final readonly class FilteredRegistry implements RegistryInterface
         $currentOffset = 0;
 
         if (null !== $currentCursor) {
-            $decodedCursor = base64_decode($currentCursor, true);
-            if (false !== $decodedCursor && is_numeric($decodedCursor)) {
+            $decodedCursor = \base64_decode($currentCursor, true);
+            if (false !== $decodedCursor && \is_numeric($decodedCursor)) {
                 $currentOffset = (int) $decodedCursor;
             }
         }
@@ -237,7 +239,7 @@ final readonly class FilteredRegistry implements RegistryInterface
         $nextOffset = $currentOffset + $limit;
 
         if ($nextOffset < $totalItems) {
-            return base64_encode((string) $nextOffset);
+            return \base64_encode((string) $nextOffset);
         }
 
         return null;
