@@ -30,7 +30,7 @@ use Mcp\Capability\Discovery\SchemaValidator;
 trait OutputSchemaAssertionTrait
 {
     /**
-     * @param class-string         $toolClass
+     * @param class-string $toolClass
      * @param array<string, mixed> $result
      */
     private function assertResultMatchesOutputSchema(string $toolClass, string $method, array $result): void

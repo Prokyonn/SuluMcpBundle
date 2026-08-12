@@ -113,7 +113,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof EqualCondition
                         && 'resourceKey' === $filter->field
@@ -141,7 +141,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof EqualCondition
                         && 'resourceKey' === $filter->field
@@ -166,7 +166,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof EqualCondition
                         && 'resourceKey' === $filter->field
@@ -215,7 +215,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof EqualCondition && 'resourceKey' === $filter->field) {
                         return false;
@@ -267,7 +267,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof InCondition
                         && 'webspaces' === $filter->field
@@ -294,7 +294,7 @@ final class ContentSearchToolTest extends TestCase
         $this->engine->createSearchBuilder('website')->willReturn($builder);
 
         $this->searcher
-            ->search(Argument::that(function (Search $search): bool {
+            ->search(Argument::that(function(Search $search): bool {
                 foreach ($search->filters as $filter) {
                     if ($filter instanceof InCondition
                         && 'webspaces' === $filter->field

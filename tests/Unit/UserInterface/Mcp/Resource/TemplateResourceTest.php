@@ -93,7 +93,7 @@ final class TemplateResourceTest extends TestCase
 
     public function testGetTemplatesGroupsPageArticleAndSnippet(): void
     {
-        $buildTyped = function (string $templateKey, string $fieldName): TypedFormMetadata {
+        $buildTyped = function(string $templateKey, string $fieldName): TypedFormMetadata {
             $field = new FieldMetadata($fieldName);
             $field->setType('text_line');
             $form = new FormMetadata();
@@ -115,7 +115,7 @@ final class TemplateResourceTest extends TestCase
 
         $result = $this->resource->getTemplates();
 
-        $this->assertSame(['page', 'article', 'snippet'], array_keys($result));
+        $this->assertSame(['page', 'article', 'snippet'], \array_keys($result));
         $this->assertArrayHasKey('default', $result['page']);
         $this->assertArrayHasKey('blog', $result['article']);
         $this->assertArrayHasKey('teaser', $result['snippet']);
@@ -140,7 +140,7 @@ final class TemplateResourceTest extends TestCase
 
         $result = $this->resource->getTemplates();
 
-        $this->assertSame(['page'], array_keys($result));
+        $this->assertSame(['page'], \array_keys($result));
     }
 
     public function testGetTemplatesMethodHasMcpResourceAttribute(): void

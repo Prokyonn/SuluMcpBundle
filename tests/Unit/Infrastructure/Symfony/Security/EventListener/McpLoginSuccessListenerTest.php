@@ -173,7 +173,7 @@ final class McpLoginSuccessListenerTest extends TestCase
     {
         self::assertInstanceOf(JsonResponse::class, $response);
 
-        $data = json_decode((string) $response->getContent(), true);
+        $data = \json_decode((string) $response->getContent(), true);
         self::assertIsArray($data);
 
         return $data;

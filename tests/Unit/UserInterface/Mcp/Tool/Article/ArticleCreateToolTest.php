@@ -138,7 +138,7 @@ final class ArticleCreateToolTest extends TestCase
     {
         $article = new Article('article-uuid-123');
 
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -199,7 +199,7 @@ final class ArticleCreateToolTest extends TestCase
         $article = new Article('uuid-1');
 
         $capturedMessage = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article, &$capturedMessage): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article, &$capturedMessage): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedMessage = $envelope->getMessage();
@@ -241,7 +241,7 @@ final class ArticleCreateToolTest extends TestCase
     {
         $article = new Article('uuid-1');
 
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -291,7 +291,7 @@ final class ArticleCreateToolTest extends TestCase
             'suffix' => '/my-article',
         ];
 
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article, $route): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article, $route): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -433,7 +433,7 @@ final class ArticleCreateToolTest extends TestCase
         $article = new Article('uuid-1');
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -520,7 +520,7 @@ final class ArticleCreateToolTest extends TestCase
         $article = new Article('uuid-1');
 
         $capturedMessage = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article, &$capturedMessage): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article, &$capturedMessage): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedMessage = $envelope->getMessage();
@@ -574,7 +574,7 @@ final class ArticleCreateToolTest extends TestCase
         );
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($article, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($article, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedData = $envelope->getMessage()->getData();

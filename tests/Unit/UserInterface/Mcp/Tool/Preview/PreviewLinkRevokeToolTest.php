@@ -126,7 +126,7 @@ final class PreviewLinkRevokeToolTest extends TestCase
         $capturedResourceKey = null;
         $this->previewLinkManager
             ->revoke(Argument::cetera())
-            ->will(static function (array $args) use (&$capturedResourceKey): void {
+            ->will(static function(array $args) use (&$capturedResourceKey): void {
                 $capturedResourceKey = $args[0];
             })
             ->shouldBeCalledOnce();

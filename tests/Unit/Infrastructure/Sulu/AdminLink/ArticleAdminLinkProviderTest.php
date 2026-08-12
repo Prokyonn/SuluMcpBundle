@@ -39,11 +39,11 @@ final class ArticleAdminLinkProviderTest extends TestCase
 
     protected function setUp(): void
     {
-        $prefix = ArticleAdmin::EDIT_TABS_VIEW.'_';
+        $prefix = ArticleAdmin::EDIT_TABS_VIEW . '_';
 
         $this->viewRegistry = $this->prophesize(ViewRegistry::class);
         $this->viewRegistry->findViewByName(Argument::any())->will(
-            static function (array $args) use ($prefix): View {
+            static function(array $args) use ($prefix): View {
                 $name = $args[0];
                 if (!\str_starts_with($name, $prefix)) {
                     throw new ViewNotFoundException($name);
@@ -53,7 +53,7 @@ final class ArticleAdminLinkProviderTest extends TestCase
                 // the path, mirroring how Sulu's ArticleAdmin builds it.
                 $group = \substr($name, \strlen($prefix));
 
-                return new View($name, '/:locale/'.$group.'/:id', 'form');
+                return new View($name, '/:locale/' . $group . '/:id', 'form');
             }
         );
 

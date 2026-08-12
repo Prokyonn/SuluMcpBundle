@@ -190,11 +190,11 @@ final class TemplatesResourceSectionTest extends TestCase
         $leaf = new FieldMetadata('leaf');
         $leaf->setType('text_line');
 
-        $current = new SectionMetadata('section_'.($depth - 1));
+        $current = new SectionMetadata('section_' . ($depth - 1));
         $current->addItem($leaf);
 
         for ($i = $depth - 2; $i >= 0; --$i) {
-            $wrapper = new SectionMetadata('section_'.$i);
+            $wrapper = new SectionMetadata('section_' . $i);
             $wrapper->addItem($current);
             $current = $wrapper;
         }

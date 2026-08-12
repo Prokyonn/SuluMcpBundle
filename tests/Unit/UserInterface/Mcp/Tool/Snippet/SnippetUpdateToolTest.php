@@ -135,7 +135,7 @@ final class SnippetUpdateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($updatedSnippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($updatedSnippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($updatedSnippet, 'handler'));
@@ -158,7 +158,7 @@ final class SnippetUpdateToolTest extends TestCase
         $capturedMessage = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedMessage) {
+            ->will(function(array $args) use ($snippet, &$capturedMessage) {
                 $capturedMessage = $args[0]->getMessage();
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -183,7 +183,7 @@ final class SnippetUpdateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -281,7 +281,7 @@ final class SnippetUpdateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -396,7 +396,7 @@ final class SnippetUpdateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));

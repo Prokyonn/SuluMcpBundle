@@ -82,7 +82,7 @@ final class ContentSearchToolOutputSchemaTest extends TestCase
     public function testSuccessResultMatchesOutputSchema(): void
     {
         $searcher = $this->prophesize(SearcherInterface::class);
-        $searcher->search(Argument::any())->willReturn(new Result((static function (): \Generator {
+        $searcher->search(Argument::any())->willReturn(new Result((static function(): \Generator {
             yield [
                 'resourceKey' => 'pages',
                 'resourceId' => 'uuid-1',

@@ -56,7 +56,7 @@ final class OAuthAuthorizationListenerTest extends TestCase
         $consentRequest = $store->get($request, $requestId);
         self::assertNotNull($consentRequest);
         self::assertSame('/admin/mcp/authorize?response_type=code&client_id=client-1&state=state-1', $consentRequest->getAuthorizationUrl());
-        self::assertStringContainsString('sulu_mcp_consent='.$requestId, $consentRequest->getContinuationUrl());
+        self::assertStringContainsString('sulu_mcp_consent=' . $requestId, $consentRequest->getContinuationUrl());
     }
 
     public function testConsumesApprovalAndApprovesAuthorization(): void
@@ -100,7 +100,7 @@ final class OAuthAuthorizationListenerTest extends TestCase
 
         $response = $event->getResponse();
         self::assertInstanceOf(RedirectResponse::class, $response);
-        self::assertSame('/admin/#/mcp/authorize/'.$consentRequest->getId(), $response->getTargetUrl());
+        self::assertSame('/admin/#/mcp/authorize/' . $consentRequest->getId(), $response->getTargetUrl());
         self::assertNotNull($store->get($request, $consentRequest->getId()));
     }
 
@@ -138,7 +138,7 @@ final class OAuthAuthorizationListenerTest extends TestCase
             $authorizationRequest,
             [new Scope('mcp:tools')],
             new Client('ChatGPT', 'client-1', 'secret'),
-            new class implements UserInterface {
+            new class() implements UserInterface {
                 public function getRoles(): array
                 {
                     return [];

@@ -44,7 +44,7 @@ final class PageAdminLinkProviderTest extends TestCase
             new View(PageAdmin::EDIT_FORM_VIEW, '/webspaces/:webspace/pages/:locale/:id', 'form'),
         );
         $this->viewRegistry->findViewByName(Argument::any())->will(
-            static function (array $args): View {
+            static function(array $args): View {
                 throw new ViewNotFoundException($args[0]);
             }
         );

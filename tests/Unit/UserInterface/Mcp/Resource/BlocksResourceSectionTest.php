@@ -202,11 +202,11 @@ final class BlocksResourceSectionTest extends TestCase
      */
     private function wrapInNestedSections(FieldMetadata $item, int $depth): SectionMetadata
     {
-        $current = new SectionMetadata('section_'.($depth - 1));
+        $current = new SectionMetadata('section_' . ($depth - 1));
         $current->addItem($item);
 
         for ($i = $depth - 2; $i >= 0; --$i) {
-            $wrapper = new SectionMetadata('section_'.$i);
+            $wrapper = new SectionMetadata('section_' . $i);
             $wrapper->addItem($current);
             $current = $wrapper;
         }

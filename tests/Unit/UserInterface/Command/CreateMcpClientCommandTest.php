@@ -132,11 +132,11 @@ final class CreateMcpClientCommandTest extends TestCase
         $client = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use (&$client): void {
+            ->will(function(array $args) use (&$client): void {
                 $client = $args[0];
             });
 
-        return static function () use (&$client): ?ClientInterface {
+        return static function() use (&$client): ?ClientInterface {
             return $client;
         };
     }
@@ -150,11 +150,11 @@ final class CreateMcpClientCommandTest extends TestCase
         $self = $this;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledTimes($expectedSaves)
-            ->will(static function (array $args) use (&$redirectUris, $self): void {
+            ->will(static function(array $args) use (&$redirectUris, $self): void {
                 $redirectUris[] = $self->stringValues($args[0]->getRedirectUris());
             });
 
-        return static function () use (&$redirectUris): array {
+        return static function() use (&$redirectUris): array {
             return $redirectUris;
         };
     }
@@ -166,6 +166,6 @@ final class CreateMcpClientCommandTest extends TestCase
      */
     private function stringValues(array $values): array
     {
-        return array_map(static fn (\Stringable $value): string => (string) $value, $values);
+        return \array_map(static fn (\Stringable $value): string => (string) $value, $values);
     }
 }

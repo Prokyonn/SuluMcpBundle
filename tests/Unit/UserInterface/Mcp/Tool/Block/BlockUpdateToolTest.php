@@ -275,7 +275,7 @@ final class BlockUpdateToolTest extends TestCase
         $capturedMessage = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use (&$capturedMessage): Envelope {
+            ->will(function(array $args) use (&$capturedMessage): Envelope {
                 $capturedMessage = $args[0]->getMessage();
 
                 return $args[0]->with(new HandledStamp(null, 'handler'));

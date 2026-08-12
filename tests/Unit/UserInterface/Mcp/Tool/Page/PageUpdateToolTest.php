@@ -153,7 +153,7 @@ final class PageUpdateToolTest extends TestCase
 
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($updatedPage) {
+            ->will(static function(array $args) use ($updatedPage) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -184,7 +184,7 @@ final class PageUpdateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($updatedPage, &$capturedData) {
+            ->will(static function(array $args) use ($updatedPage, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -362,7 +362,7 @@ final class PageUpdateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($updatedPage, &$capturedData) {
+            ->will(static function(array $args) use ($updatedPage, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -486,7 +486,7 @@ final class PageUpdateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($updatedPage, &$capturedData) {
+            ->will(function(array $args) use ($updatedPage, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $capturedData = $envelope->getMessage()->getData();
@@ -517,7 +517,7 @@ final class PageUpdateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($updatedPage, &$capturedData) {
+            ->will(static function(array $args) use ($updatedPage, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();

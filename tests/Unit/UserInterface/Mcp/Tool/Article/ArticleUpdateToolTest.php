@@ -160,7 +160,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'blog'));
         $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old Title', 'template' => 'blog']);
 
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $stamps = $envelope->all();
@@ -263,7 +263,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
 
         // User has EDIT on the base group (source context) but not on the blog group (target context).
-        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args): void {
+        $this->permissionChecker->check(Argument::cetera())->will(static function(array $args): void {
             [$context, $permission, $locale] = [$args[0], $args[1], $args[2] ?? null];
             if ('sulu.article.articles_blog' === $context) {
                 throw new PermissionDeniedException($context, $permission, $locale);
@@ -309,7 +309,7 @@ final class ArticleUpdateToolTest extends TestCase
 
         // User has EDIT on both the base group (source) and the blog group (target).
         $checkedContexts = [];
-        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+        $this->permissionChecker->check(Argument::cetera())->will(static function(array $args) use (&$checkedContexts): void {
             $checkedContexts[] = $args[0];
         });
 
@@ -356,7 +356,7 @@ final class ArticleUpdateToolTest extends TestCase
         // User has EDIT only on the base group; content can no longer influence the written
         // template, so the (denied) blog-group target check must never fire.
         $checkedContexts = [];
-        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+        $this->permissionChecker->check(Argument::cetera())->will(static function(array $args) use (&$checkedContexts): void {
             $checkedContexts[] = $args[0];
             if ('sulu.article.articles_blog' === $args[0]) {
                 throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
@@ -364,7 +364,7 @@ final class ArticleUpdateToolTest extends TestCase
         });
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedData = $envelope->getMessage()->getData();
@@ -413,7 +413,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         $checkedContexts = [];
-        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+        $this->permissionChecker->check(Argument::cetera())->will(static function(array $args) use (&$checkedContexts): void {
             $checkedContexts[] = $args[0];
             if ('sulu.article.articles_blog' === $args[0]) {
                 throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
@@ -421,7 +421,7 @@ final class ArticleUpdateToolTest extends TestCase
         });
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedData = $envelope->getMessage()->getData();
@@ -447,7 +447,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedData = $envelope->getMessage()->getData();
@@ -495,7 +495,7 @@ final class ArticleUpdateToolTest extends TestCase
         // User has EDIT only on the base group, but content.template repeats the current
         // template, so no group change happens and the target check must not fire.
         $checkedContexts = [];
-        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+        $this->permissionChecker->check(Argument::cetera())->will(static function(array $args) use (&$checkedContexts): void {
             $checkedContexts[] = $args[0];
             if ('sulu.article.articles_blog' === $args[0]) {
                 throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
@@ -546,7 +546,7 @@ final class ArticleUpdateToolTest extends TestCase
             ],
         ]);
 
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -601,7 +601,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'blog']);
 
         $capturedData = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle, &$capturedData): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $message = $envelope->getMessage();
@@ -725,7 +725,7 @@ final class ArticleUpdateToolTest extends TestCase
         $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'blog']);
 
         $capturedMessage = null;
-        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedMessage): Envelope {
+        $this->messageBus->dispatch(Argument::cetera())->will(static function(array $args) use ($updatedArticle, &$capturedMessage): Envelope {
             /** @var Envelope $envelope */
             $envelope = $args[0];
             $capturedMessage = $envelope->getMessage();

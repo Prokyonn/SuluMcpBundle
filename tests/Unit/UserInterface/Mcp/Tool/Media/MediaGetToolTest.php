@@ -163,7 +163,7 @@ final class MediaGetToolTest extends TestCase
         $calls = [];
         $this->permissionChecker
             ->check(Argument::cetera())
-            ->will(function (array $args) use (&$calls): void {
+            ->will(function(array $args) use (&$calls): void {
                 $calls[] = [$args[0], $args[1]];
             })
             ->shouldBeCalledTimes(2);

@@ -100,7 +100,7 @@ class TemplatesResource
      * inside sections, so this recurses; the depth cap guards against a runaway
      * (but acyclic) nesting of sections or block types blowing up the payload.
      *
-     * @param ItemMetadata[]      $items
+     * @param ItemMetadata[] $items
      * @param array<string, true> $visiting block type names currently on the resolution path
      *
      * @return list<array<string, mixed>>

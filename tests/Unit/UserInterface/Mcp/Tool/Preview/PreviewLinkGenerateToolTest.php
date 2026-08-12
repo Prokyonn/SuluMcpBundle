@@ -173,7 +173,7 @@ final class PreviewLinkGenerateToolTest extends TestCase
         $capturedResourceKey = null;
         $this->previewLinkManager
             ->generate(Argument::cetera())
-            ->will(static function (array $args) use (&$capturedResourceKey, $previewLink) {
+            ->will(static function(array $args) use (&$capturedResourceKey, $previewLink) {
                 $capturedResourceKey = $args[0];
 
                 return $previewLink;

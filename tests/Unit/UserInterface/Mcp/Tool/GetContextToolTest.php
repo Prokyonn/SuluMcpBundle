@@ -273,7 +273,7 @@ final class GetContextToolTest extends TestCase
             $this->assertArrayHasKey('available', $row);
         }
 
-        $byName = array_column($result['tools'], null, 'name');
+        $byName = \array_column($result['tools'], null, 'name');
         $this->assertFalse($byName['sulu_tag_create']['available']);
         $this->assertNotNull($byName['sulu_tag_create']['reason']);
         $this->assertTrue($byName['sulu_get_context']['available']);
@@ -288,7 +288,7 @@ final class GetContextToolTest extends TestCase
     {
         $seenLocales = [];
         $checker = $this->prophesize(ToolPermissionCheckerInterface::class);
-        $checker->has(Argument::cetera())->will(function (array $args) use (&$seenLocales): bool {
+        $checker->has(Argument::cetera())->will(function(array $args) use (&$seenLocales): bool {
             $seenLocales[] = $args[2] ?? null;
 
             return false;
@@ -315,7 +315,7 @@ final class GetContextToolTest extends TestCase
         $tool->getContext('de');
 
         $this->assertNotEmpty($seenLocales, 'The catalogue must consult the permission checker.');
-        $this->assertSame(['de'], array_values(array_unique($seenLocales)));
+        $this->assertSame(['de'], \array_values(\array_unique($seenLocales)));
     }
 
     public function testGetContextFiltersWebspacesToPermittedOnly(): void

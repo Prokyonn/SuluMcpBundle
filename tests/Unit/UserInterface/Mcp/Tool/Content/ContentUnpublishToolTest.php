@@ -101,7 +101,7 @@ final class ContentUnpublishToolTest extends TestCase
         $this->setupEntity('snippet');
 
         $this->messageBus->dispatch(Argument::cetera())
-            ->will(static function (array $args) {
+            ->will(static function(array $args) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 self::assertInstanceOf(ApplyWorkflowTransitionSnippetMessage::class, $envelope->getMessage());

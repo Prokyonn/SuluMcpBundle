@@ -94,7 +94,7 @@ class BlockAddTool
                 return ['error' => \sprintf('%s not found: %s', \ucfirst($type), $uuid)];
             }
 
-            $dimensionContent = $this->contentManager->resolve($entity, [ // @phpstan-ignore argument.templateType
+            $dimensionContent = $this->contentManager->resolve($entity, [ // @phpstan-ignore argument.type, argument.templateType (loadDraft() only declares `object`; ContentRichEntityInterface<T> is invariant so a page/article/snippet union cannot be narrowed here)
                 'locale' => $locale,
                 'stage' => DimensionContentInterface::STAGE_DRAFT,
             ]);
@@ -127,7 +127,7 @@ class BlockAddTool
                 return $validationError;
             }
 
-            $newBlock = $this->assignBlockIds(\array_merge(['type' => $blockType], $blockData), $this->blockIdGenerator);
+            $newBlock = $this->stringifyKeys($this->assignBlockIds(\array_merge(['type' => $blockType], $blockData), $this->blockIdGenerator));
 
             if (null !== $parentBlockId) {
                 // Nested insert: find the parent block and add inside it

@@ -61,6 +61,9 @@ class ContactListTool
 
         try {
             if ('account' === $type) {
+                // AccountRepositoryInterface::findAllSelect() only declares `array` -- it
+                // returns a plain DB row per account for the selected fields.
+                /** @var list<array<string, mixed>> $items */
                 $items = $this->accountRepository->findAllSelect(['id', 'name']);
                 $results = [];
                 foreach (\array_slice($items, $offset, $limit) as $item) {
@@ -73,6 +76,9 @@ class ContactListTool
                 return ['items' => $results, 'type' => 'account'];
             }
 
+            // ContactRepositoryInterface::findGetAll() only declares `array` -- it returns
+            // a plain DB row per contact for the selected fields.
+            /** @var list<array<string, mixed>> $items */
             $items = $this->contactRepository->findGetAll($limit, $offset, [], []);
             $results = [];
             foreach ($items as $contact) {

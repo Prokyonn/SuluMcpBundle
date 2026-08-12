@@ -122,7 +122,7 @@ final class WebspaceResourceTest extends TestCase
     /**
      * Helper: create webspace with portal having multiple environments.
      *
-     * @param list<string>          $locales
+     * @param list<string> $locales
      * @param array<string, string> $envUrls keyed by environment type
      */
     private function createWebspaceWithMultipleEnvPortal(string $key, string $name, array $locales, array $envUrls): Webspace

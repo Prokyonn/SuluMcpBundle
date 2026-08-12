@@ -134,7 +134,7 @@ final class ContentDeleteToolTest extends TestCase
         $this->pageRepository->findDescendantIdsById(Argument::cetera())->willReturn([]);
 
         $this->messageBus->dispatch(Argument::cetera())
-            ->will(static function (array $args) {
+            ->will(static function(array $args) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 self::assertInstanceOf(RemovePageMessage::class, $envelope->getMessage());
@@ -154,7 +154,7 @@ final class ContentDeleteToolTest extends TestCase
         $this->setupEntity('snippet');
 
         $this->messageBus->dispatch(Argument::cetera())
-            ->will(static function (array $args) {
+            ->will(static function(array $args) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 self::assertInstanceOf(RemoveSnippetMessage::class, $envelope->getMessage());
@@ -173,7 +173,7 @@ final class ContentDeleteToolTest extends TestCase
         $this->setupEntity('article');
 
         $this->messageBus->dispatch(Argument::cetera())
-            ->will(static function (array $args) {
+            ->will(static function(array $args) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 self::assertInstanceOf(RemoveArticleMessage::class, $envelope->getMessage());
@@ -268,7 +268,7 @@ final class ContentDeleteToolTest extends TestCase
 
         $recordedCalls = [];
         $this->permissionChecker->check(Argument::cetera())
-            ->will(static function (array $args) use (&$recordedCalls): void {
+            ->will(static function(array $args) use (&$recordedCalls): void {
                 [, $permissions, , $objectType, $objectId] = $args;
                 $recordedCalls[] = [$permissions, $objectType, $objectId];
             })

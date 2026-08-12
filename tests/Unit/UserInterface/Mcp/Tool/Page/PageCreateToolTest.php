@@ -135,7 +135,7 @@ final class PageCreateToolTest extends TestCase
 
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($page) {
+            ->will(static function(array $args) use ($page) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -163,7 +163,7 @@ final class PageCreateToolTest extends TestCase
 
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($page) {
+            ->will(static function(array $args) use ($page) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -186,7 +186,7 @@ final class PageCreateToolTest extends TestCase
         $capturedMessage = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($page, &$capturedMessage) {
+            ->will(function(array $args) use ($page, &$capturedMessage) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $capturedMessage = $envelope->getMessage();
@@ -303,7 +303,7 @@ final class PageCreateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($page, &$capturedData) {
+            ->will(static function(array $args) use ($page, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -418,7 +418,7 @@ final class PageCreateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($page, &$capturedData) {
+            ->will(static function(array $args) use ($page, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();
@@ -509,7 +509,7 @@ final class PageCreateToolTest extends TestCase
         $this->permissionChecker
             ->check(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$checked): void {
+            ->will(static function(array $args) use (&$checked): void {
                 self::assertSame('sulu.webspaces.example', $args[0]);
                 self::assertSame('en', $args[2]);
                 self::assertSame(Page::class, $args[3]);
@@ -575,7 +575,7 @@ final class PageCreateToolTest extends TestCase
         $capturedData = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use ($page, &$capturedData) {
+            ->will(static function(array $args) use ($page, &$capturedData) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 $message = $envelope->getMessage();

@@ -44,7 +44,7 @@ final class CategoryAdminLinkProviderTest extends TestCase
             new View(CategoryAdmin::EDIT_FORM_VIEW, '/categories/:locale/:id', 'form'),
         );
         $this->viewRegistry->findViewByName(Argument::any())->will(
-            static function (array $args): View {
+            static function(array $args): View {
                 throw new ViewNotFoundException($args[0]);
             }
         );

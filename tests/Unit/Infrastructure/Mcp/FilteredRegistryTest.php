@@ -58,7 +58,7 @@ final class FilteredRegistryTest extends TestCase
 
     /**
      * @param array<string, array{name: string, requirements: list<array{context: string, permission: string}>, contextArgument: ?string, contextResolver: ?string, objectResolved: bool, discoveryContexts: list<string>}> $map
-     * @param ObjectProphecy<ToolPermissionCheckerInterface>                                                                                                                                                                $checker
+     * @param ObjectProphecy<ToolPermissionCheckerInterface> $checker
      */
     private function visibilityResolver(array $map, ObjectProphecy $checker): ToolVisibilityResolver
     {
@@ -105,7 +105,7 @@ final class FilteredRegistryTest extends TestCase
 
         $registry = new FilteredRegistry($this->inner, $this->visibilityResolver($map, $checker));
 
-        $names = array_keys((array) $registry->getTools(null, null)->getArrayCopy());
+        $names = \array_keys((array) $registry->getTools(null, null)->getArrayCopy());
 
         self::assertContains('sulu_ping', $names);
         self::assertContains('sulu_tag_list', $names);
@@ -131,9 +131,9 @@ final class FilteredRegistryTest extends TestCase
         self::assertCount(1, $secondPage->references);
         self::assertNull($secondPage->nextCursor);
 
-        $collected = [...array_values($firstPage->references), ...array_values($secondPage->references)];
-        $collectedNames = array_map(static fn (Tool $tool): string => $tool->name, $collected);
-        sort($collectedNames);
+        $collected = [...\array_values($firstPage->references), ...\array_values($secondPage->references)];
+        $collectedNames = \array_map(static fn (Tool $tool): string => $tool->name, $collected);
+        \sort($collectedNames);
         self::assertSame(['sulu_get_context', 'sulu_ping'], $collectedNames);
     }
 

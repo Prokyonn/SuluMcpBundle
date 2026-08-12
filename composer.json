@@ -47,8 +47,9 @@
         "symfony/dotenv": "^7.3",
         "doctrine/data-fixtures": "^2.2",
         "friendsofsymfony/jsrouting-bundle": "^3.6",
-        "phpspec/prophecy": "^1.18",
-        "phpspec/prophecy-phpunit": "^2.0"
+        "phpstan/phpstan-symfony": "^2.0",
+        "phpstan/phpstan-doctrine": "^2.0",
+        "spaze/phpstan-disallowed-calls": "^4.7"
     },
     "autoload": {
         "psr-4": {

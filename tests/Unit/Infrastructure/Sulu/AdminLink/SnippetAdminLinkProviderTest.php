@@ -44,7 +44,7 @@ final class SnippetAdminLinkProviderTest extends TestCase
             new View(SnippetAdmin::EDIT_TABS_VIEW, '/snippets/:locale/:id', 'form'),
         );
         $this->viewRegistry->findViewByName(Argument::any())->will(
-            static function (array $args): View {
+            static function(array $args): View {
                 throw new ViewNotFoundException($args[0]);
             }
         );

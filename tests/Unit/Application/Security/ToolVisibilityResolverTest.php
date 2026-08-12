@@ -52,7 +52,7 @@ final class ToolVisibilityResolverTest extends TestCase
 
     /**
      * @param array<string, array{name: string, requirements: list<array{context: string, permission: string}>, contextArgument: ?string, contextResolver: ?string, objectResolved: bool, discoveryContexts: list<string>}> $map
-     * @param array<string, ToolContextResolverInterface>                                                                                                                                                                   $contextResolvers
+     * @param array<string, ToolContextResolverInterface> $contextResolvers
      */
     private function resolver(
         array $map,
@@ -90,7 +90,7 @@ final class ToolVisibilityResolverTest extends TestCase
         $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
         $securityChecker->hasPermission(Argument::cetera())->will(
             static fn ($args): bool => \in_array(
-                str_replace('sulu.webspaces.', '', $args[0]->getSecurityContext()),
+                \str_replace('sulu.webspaces.', '', $args[0]->getSecurityContext()),
                 $grantedWebspaceKeys,
                 true,
             ),
@@ -306,7 +306,7 @@ final class ToolVisibilityResolverTest extends TestCase
         ]);
 
         $rows = $resolver->describeAll();
-        $byName = array_column($rows, null, 'name');
+        $byName = \array_column($rows, null, 'name');
 
         self::assertArrayHasKey('sulu_tag_create', $byName);
         self::assertFalse($byName['sulu_tag_create']['available']);
@@ -318,6 +318,6 @@ final class ToolVisibilityResolverTest extends TestCase
         self::assertArrayHasKey('sulu_get_context', $byName);
         self::assertTrue($byName['sulu_get_context']['available']);
 
-        self::assertSame(['sulu_get_context', 'sulu_ping', 'sulu_tag_create'], array_column($rows, 'name'));
+        self::assertSame(['sulu_get_context', 'sulu_ping', 'sulu_tag_create'], \array_column($rows, 'name'));
     }
 }

@@ -80,7 +80,10 @@ class SnippetUpdateTool
                 return ['error' => \sprintf('Snippet not found: %s', $uuid)];
             }
 
-            $currentDimensionContent = $this->contentManager->resolve($snippet, [ // @phpstan-ignore argument.templateType
+            // loadDraft() only declares `object` since it covers page/article/snippet, but the
+            // 'snippet' type argument above guarantees a SnippetInterface.
+            /** @var SnippetInterface $snippet */
+            $currentDimensionContent = $this->contentManager->resolve($snippet, [
                 'locale' => $locale,
                 'stage' => DimensionContentInterface::STAGE_DRAFT,
             ]);

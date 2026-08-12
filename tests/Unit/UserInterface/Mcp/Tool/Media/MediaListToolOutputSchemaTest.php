@@ -87,7 +87,7 @@ final class MediaListToolOutputSchemaTest extends TestCase
 
         $permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
         $permissionChecker->has(Argument::cetera())
-            ->will(function (array $args): bool {
+            ->will(function(array $args): bool {
                 if ('sulu.media.system_collections' === $args[0]) {
                     return true;
                 }

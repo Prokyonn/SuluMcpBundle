@@ -46,7 +46,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
         $capturedClient = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$capturedClient): void {
+            ->will(static function(array $args) use (&$capturedClient): void {
                 $capturedClient = $args[0];
             });
 
@@ -110,7 +110,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
         $capturedClient = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$capturedClient): void {
+            ->will(static function(array $args) use (&$capturedClient): void {
                 $capturedClient = $args[0];
             });
 
@@ -135,7 +135,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
         $capturedClient = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$capturedClient): void {
+            ->will(static function(array $args) use (&$capturedClient): void {
                 $capturedClient = $args[0];
             });
 
@@ -155,7 +155,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
         $capturedClient = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$capturedClient): void {
+            ->will(static function(array $args) use (&$capturedClient): void {
                 $capturedClient = $args[0];
             });
 
@@ -201,7 +201,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
         $capturedClient = null;
         $this->clientManager->save(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(static function (array $args) use (&$capturedClient): void {
+            ->will(static function(array $args) use (&$capturedClient): void {
                 $capturedClient = $args[0];
             });
 
@@ -220,7 +220,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
      */
     private function jsonRequest(array $body): Request
     {
-        $content = json_encode($body, \JSON_THROW_ON_ERROR);
+        $content = \json_encode($body, \JSON_THROW_ON_ERROR);
         self::assertIsString($content);
 
         return Request::create('/admin/mcp/register', 'POST', [], [], [], [], $content);
@@ -232,7 +232,7 @@ final class DynamicClientRegistrationControllerTest extends TestCase
     private function json(string|false $content): array
     {
         self::assertIsString($content);
-        $data = json_decode($content, true);
+        $data = \json_decode($content, true);
         self::assertIsArray($data);
 
         return $data;
@@ -245,6 +245,6 @@ final class DynamicClientRegistrationControllerTest extends TestCase
      */
     private function stringValues(array $values): array
     {
-        return array_map(static fn (\Stringable $value): string => (string) $value, $values);
+        return \array_map(static fn (\Stringable $value): string => (string) $value, $values);
     }
 }

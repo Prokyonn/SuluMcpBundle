@@ -91,7 +91,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
         $securityChecker->hasPermission(Argument::cetera())->will(
             static fn ($args): bool => \in_array(
-                str_replace('sulu.webspaces.', '', $args[0]->getSecurityContext()),
+                \str_replace('sulu.webspaces.', '', $args[0]->getSecurityContext()),
                 $grantedWebspaceKeys,
                 true,
             ),

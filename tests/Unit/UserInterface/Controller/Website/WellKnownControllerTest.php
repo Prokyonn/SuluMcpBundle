@@ -60,7 +60,7 @@ final class WellKnownControllerTest extends TestCase
 
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate(Argument::cetera())->will(
-            static fn (array $args): string => $paths[$args[0]] ?? self::fail('Unexpected route "'.$args[0].'".'),
+            static fn (array $args): string => $paths[$args[0]] ?? self::fail('Unexpected route "' . $args[0] . '".'),
         );
 
         return $urlGenerator->reveal();
@@ -72,7 +72,7 @@ final class WellKnownControllerTest extends TestCase
     private function json(string|false $content): array
     {
         self::assertIsString($content);
-        $data = json_decode($content, true);
+        $data = \json_decode($content, true);
         self::assertIsArray($data);
 
         return $data;

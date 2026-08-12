@@ -75,7 +75,7 @@ class PreviewLinkRevokeTool
             }
 
             $dimensionContent = 'article' === $type
-                ? $this->contentManager->resolve($entity, ['locale' => $locale, 'stage' => DimensionContentInterface::STAGE_DRAFT]) // @phpstan-ignore argument.templateType
+                ? $this->contentManager->resolve($entity, ['locale' => $locale, 'stage' => DimensionContentInterface::STAGE_DRAFT]) // @phpstan-ignore argument.type, argument.templateType (loadDraft() only declares `object`; ContentRichEntityInterface<T> is invariant so a page/article/snippet union cannot be narrowed here)
                 : null;
 
             // Preview links are gated on EDIT, stricter than the admin UI's VIEW.

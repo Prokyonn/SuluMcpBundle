@@ -36,7 +36,7 @@ final class OAuthSystemStoreListenerTest extends TestCase
 
     private function noopKernel(): HttpKernelInterface
     {
-        return new class implements HttpKernelInterface {
+        return new class() implements HttpKernelInterface {
             public function handle(Request $request, int $type = self::MAIN_REQUEST, bool $catch = true): Response
             {
                 throw new \LogicException('This test kernel is never expected to handle a request.');

@@ -101,7 +101,7 @@ final class ContentPublishToolTest extends TestCase
         $this->setupEntity('page');
 
         $this->messageBus->dispatch(Argument::cetera())
-            ->will(static function (array $args) {
+            ->will(static function(array $args) {
                 /** @var Envelope $envelope */
                 $envelope = $args[0];
                 self::assertInstanceOf(ApplyWorkflowTransitionPageMessage::class, $envelope->getMessage());

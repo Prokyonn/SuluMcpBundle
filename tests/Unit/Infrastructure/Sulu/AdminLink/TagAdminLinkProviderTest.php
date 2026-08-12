@@ -44,7 +44,7 @@ final class TagAdminLinkProviderTest extends TestCase
             new View(TagAdmin::EDIT_FORM_VIEW, '/tags/:id', 'form'),
         );
         $this->viewRegistry->findViewByName(Argument::any())->will(
-            static function (array $args): View {
+            static function(array $args): View {
                 throw new ViewNotFoundException($args[0]);
             }
         );

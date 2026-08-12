@@ -76,8 +76,8 @@ class BlocksResource
     }
 
     /**
-     * @param array<string, array<string, mixed>> $blockTypes           accumulated across content types, keyed by block type name
-     * @param array<string, list<string>>         $availableInTemplates accumulated template keys per block type name
+     * @param array<string, array<string, mixed>> $blockTypes accumulated across content types, keyed by block type name
+     * @param array<string, list<string>> $availableInTemplates accumulated template keys per block type name
      */
     private function collectBlockTypes(TypedFormMetadata $typedMetadata, array &$blockTypes, array &$availableInTemplates): void
     {
@@ -179,7 +179,7 @@ class BlocksResource
      * `<section name="form">`) is presentation-only grouping, so its children are
      * flattened into the surrounding field list rather than nested under it.
      *
-     * @param ItemMetadata[]      $items
+     * @param ItemMetadata[] $items
      * @param array<string, true> $visiting block type names currently on the resolution path
      *
      * @return list<array<string, mixed>>

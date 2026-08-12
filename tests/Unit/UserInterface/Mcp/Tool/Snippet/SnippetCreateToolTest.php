@@ -90,7 +90,7 @@ final class SnippetCreateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -117,7 +117,7 @@ final class SnippetCreateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -144,7 +144,7 @@ final class SnippetCreateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
@@ -228,7 +228,7 @@ final class SnippetCreateToolTest extends TestCase
         $capturedEnvelope = null;
         $this->messageBus->dispatch(Argument::cetera())
             ->shouldBeCalledOnce()
-            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+            ->will(function(array $args) use ($snippet, &$capturedEnvelope) {
                 $capturedEnvelope = $args[0];
 
                 return $args[0]->with(new HandledStamp($snippet, 'handler'));
