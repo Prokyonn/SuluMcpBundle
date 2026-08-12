@@ -15,25 +15,29 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Resource;
 
 use Mcp\Capability\Attribute\McpResource;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
-use Sulu\Bundle\AdminBundle\Metadata\MetadataInterface;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
 use Sulu\Mcp\UserInterface\Mcp\Resource\TemplatesResource;
 
 #[CoversClass(TemplatesResource::class)]
 final class TemplateResourceTest extends TestCase
 {
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
+    use ProphecyTrait;
+
+    /** @var ObjectProphecy<MetadataProviderInterface> */
+    private ObjectProphecy $formMetadataProvider;
     private TemplatesResource $resource;
 
     protected function setUp(): void
     {
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->resource = new TemplatesResource($this->formMetadataProvider);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
+        $this->resource = new TemplatesResource($this->formMetadataProvider->reveal());
     }
 
     public function testGetTemplatesReturnsTemplatesGroupedByContentType(): void
@@ -48,9 +52,8 @@ final class TemplateResourceTest extends TestCase
         $typedMetadata = new TypedFormMetadata();
         $typedMetadata->addForm('default', $form);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'page' === $key ? $typedMetadata : null);
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($typedMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())->willThrow(new \RuntimeException('not installed'));
 
         $result = $this->resource->getTemplates();
 
@@ -73,9 +76,8 @@ final class TemplateResourceTest extends TestCase
         $typedMetadata = new TypedFormMetadata();
         $typedMetadata->addForm('default', $form);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'page' === $key ? $typedMetadata : null);
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($typedMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())->willThrow(new \RuntimeException('not installed'));
 
         $result = $this->resource->getTemplates();
 
@@ -107,14 +109,9 @@ final class TemplateResourceTest extends TestCase
         $articleMetadata = $buildTyped('blog', 'headline');
         $snippetMetadata = $buildTyped('teaser', 'label');
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                'article' => $articleMetadata,
-                'snippet' => $snippetMetadata,
-                default => null,
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('article', Argument::cetera())->willReturn($articleMetadata);
+        $this->formMetadataProvider->getMetadata('snippet', Argument::cetera())->willReturn($snippetMetadata);
 
         $result = $this->resource->getTemplates();
 
@@ -135,13 +132,11 @@ final class TemplateResourceTest extends TestCase
         $pageMetadata = new TypedFormMetadata();
         $pageMetadata->addForm('default', $form);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                'article' => throw new \RuntimeException('Article metadata not installed'),
-                default => null,
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('article', Argument::cetera())
+            ->willThrow(new \RuntimeException('Article metadata not installed'));
+        $this->formMetadataProvider->getMetadata(Argument::cetera())
+            ->willThrow(new \RuntimeException('not installed'));
 
         $result = $this->resource->getTemplates();
 
@@ -162,10 +157,12 @@ final class TemplateResourceTest extends TestCase
 
     public function testGetTemplatesReturnsEmptyArrayWhenProviderReturnsNonTypedFormMetadata(): void
     {
-        $nonTypedMetadata = $this->createMock(MetadataInterface::class);
+        // A plain FormMetadata is not a TypedFormMetadata, so the resource treats
+        // it as "no templates" without needing a dedicated mock/stub type.
+        $nonTypedMetadata = new FormMetadata();
 
         $this->formMetadataProvider
-            ->method('getMetadata')
+            ->getMetadata(Argument::cetera())
             ->willReturn($nonTypedMetadata);
 
         $result = $this->resource->getTemplates();
