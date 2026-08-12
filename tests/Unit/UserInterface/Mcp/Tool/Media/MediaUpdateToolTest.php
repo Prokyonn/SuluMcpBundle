@@ -16,8 +16,10 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Media;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\MediaBundle\Api\Media;
 use Sulu\Bundle\MediaBundle\Entity\Collection;
 use Sulu\Bundle\MediaBundle\Entity\CollectionType;
@@ -33,58 +35,80 @@ use Sulu\Mcp\Infrastructure\Symfony\Routing\AdminLinkGenerator;
 use Sulu\Mcp\Tests\Application\TestBundle\Admin\TestViewRegistry;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Media\MediaUpdateTool;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 #[CoversClass(MediaUpdateTool::class)]
 final class MediaUpdateToolTest extends TestCase
 {
-    private MediaManagerInterface&MockObject $mediaManager;
-    private TokenStorageInterface&MockObject $tokenStorage;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<MediaManagerInterface>
+     */
+    private ObjectProphecy $mediaManager;
+
+    private TokenStorage $tokenStorage;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $permissionChecker;
+
     private MediaUpdateTool $tool;
 
     protected function setUp(): void
     {
-        $this->mediaManager = $this->createMock(MediaManagerInterface::class);
-        $this->tokenStorage = $this->createMock(TokenStorageInterface::class);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
+        $this->mediaManager = $this->prophesize(MediaManagerInterface::class);
+        $this->tokenStorage = new TokenStorage();
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
-        $adminLinkGenerator = new AdminLinkGenerator($router, [new MediaAdminLinkProvider(new TestViewRegistry())]);
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
+        $adminLinkGenerator = new AdminLinkGenerator($router->reveal(), [new MediaAdminLinkProvider(new TestViewRegistry())]);
 
-        $this->tool = new MediaUpdateTool($this->mediaManager, $this->tokenStorage, $adminLinkGenerator, $this->permissionChecker);
+        $this->tool = new MediaUpdateTool($this->mediaManager->reveal(), $this->tokenStorage, $adminLinkGenerator, $this->permissionChecker->reveal());
     }
 
-    private function authenticateAsUser(): void
+    /**
+     * Subclassed only to make the id settable -- User's id has no setter.
+     */
+    private function authenticateAsUser(int $userId = 1): void
     {
-        $user = $this->createMock(User::class);
-        $user->method('getId')->willReturn(1);
+        $user = new class($userId) extends User {
+            public function __construct(private readonly int $fakeId)
+            {
+                parent::__construct();
+            }
 
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($user);
+            public function getId(): int
+            {
+                return $this->fakeId;
+            }
+        };
 
-        $this->tokenStorage->method('getToken')->willReturn($token);
+        $this->tokenStorage->setToken(new UsernamePasswordToken($user, 'main'));
     }
 
     /**
      * @param non-empty-string|null $typeKey
+     *
+     * @return ObjectProphecy<Media>
      */
-    private function loadedMedia(int $collectionId, ?string $typeKey = null): Media&MockObject
+    private function loadedMedia(int $collectionId, ?string $typeKey = null): ObjectProphecy
     {
-        $collectionType = $this->createMock(CollectionType::class);
-        $collectionType->method('getKey')->willReturn($typeKey);
+        $collectionType = new CollectionType();
+        $collectionType->setKey($typeKey);
 
-        $collection = $this->createMock(Collection::class);
-        $collection->method('getId')->willReturn($collectionId);
-        $collection->method('getType')->willReturn($collectionType);
+        $collection = $this->prophesize(Collection::class);
+        $collection->getId()->willReturn($collectionId);
+        $collection->getType()->willReturn($collectionType);
 
-        $mediaEntity = $this->createMock(MediaEntity::class);
-        $mediaEntity->method('getCollection')->willReturn($collection);
+        $mediaEntity = $this->prophesize(MediaEntity::class);
+        $mediaEntity->getCollection()->willReturn($collection->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getEntity')->willReturn($mediaEntity);
+        $media = $this->prophesize(Media::class);
+        $media->getEntity()->willReturn($mediaEntity->reveal());
 
         return $media;
     }
@@ -93,23 +117,22 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(5));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(5)->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getId')->willReturn(42);
-        $media->method('getTitle')->willReturn('Updated Title');
+        $media = $this->prophesize(Media::class);
+        $media->getId()->willReturn(42);
+        $media->getTitle()->willReturn('Updated Title');
 
         $this->mediaManager
-            ->expects($this->once())
-            ->method('save')
-            ->with(
+            ->save(
                 null,
-                $this->callback(fn (array $data): bool => 42 === $data['id']
+                Argument::that(fn (array $data): bool => 42 === $data['id']
                     && 'en' === $data['locale']
                     && 'Updated Title' === $data['title']),
                 1,
             )
-            ->willReturn($media);
+            ->shouldBeCalledOnce()
+            ->willReturn($media->reveal());
 
         $result = $this->tool->updateMedia(42, 'en', 'Updated Title');
 
@@ -121,8 +144,6 @@ final class MediaUpdateToolTest extends TestCase
 
     public function testUpdateMediaReturnsErrorWhenNoUser(): void
     {
-        $this->tokenStorage->method('getToken')->willReturn(null);
-
         $result = $this->tool->updateMedia(42, 'en', 'Title');
 
         $this->assertArrayHasKey('error', $result);
@@ -136,24 +157,23 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(5));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(5)->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getId')->willReturn(42);
-        $media->method('getTitle')->willReturn('Original');
+        $media = $this->prophesize(Media::class);
+        $media->getId()->willReturn(42);
+        $media->getTitle()->willReturn('Original');
 
         $this->mediaManager
-            ->expects($this->once())
-            ->method('save')
-            ->with(
+            ->save(
                 null,
-                $this->callback(fn (array $data): bool => 42 === $data['id']
+                Argument::that(fn (array $data): bool => 42 === $data['id']
                     && isset($data['copyright'])
                     && !\array_key_exists('title', $data)
                     && !\array_key_exists('description', $data)),
                 1,
             )
-            ->willReturn($media);
+            ->shouldBeCalledOnce()
+            ->willReturn($media->reveal());
 
         $this->tool->updateMedia(42, 'en', null, null, '(c) 2026');
     }
@@ -162,8 +182,8 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(5));
-        $this->mediaManager->method('save')->willThrowException(new \RuntimeException('Save failed'));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(5)->reveal());
+        $this->mediaManager->save(Argument::cetera())->willThrow(new \RuntimeException('Save failed'));
 
         $result = $this->tool->updateMedia(42, 'en', 'Title');
 
@@ -177,17 +197,16 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(9));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(9)->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getId')->willReturn(42);
-        $media->method('getTitle')->willReturn('Title');
-        $this->mediaManager->method('save')->willReturn($media);
+        $media = $this->prophesize(Media::class);
+        $media->getId()->willReturn(42);
+        $media->getTitle()->willReturn('Title');
+        $this->mediaManager->save(Argument::cetera())->willReturn($media->reveal());
 
         $this->permissionChecker
-            ->expects($this->once())
-            ->method('check')
-            ->with('sulu.media.collections', PermissionTypes::EDIT, 'en', Collection::class, 9);
+            ->check('sulu.media.collections', PermissionTypes::EDIT, 'en', Collection::class, 9)
+            ->shouldBeCalledOnce();
 
         $this->tool->updateMedia(42, 'en', 'Title');
     }
@@ -196,20 +215,20 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(1, SystemCollectionManagerInterface::COLLECTION_TYPE));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(1, SystemCollectionManagerInterface::COLLECTION_TYPE)->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getId')->willReturn(42);
-        $media->method('getTitle')->willReturn('Title');
-        $this->mediaManager->method('save')->willReturn($media);
+        $media = $this->prophesize(Media::class);
+        $media->getId()->willReturn(42);
+        $media->getTitle()->willReturn('Title');
+        $this->mediaManager->save(Argument::cetera())->willReturn($media->reveal());
 
         $calls = [];
         $this->permissionChecker
-            ->expects($this->exactly(2))
-            ->method('check')
-            ->willReturnCallback(function (string $context, string $permission) use (&$calls): void {
-                $calls[] = [$context, $permission];
-            });
+            ->check(Argument::cetera())
+            ->will(function (array $args) use (&$calls): void {
+                $calls[] = [$args[0], $args[1]];
+            })
+            ->shouldBeCalledTimes(2);
 
         $this->tool->updateMedia(42, 'en', 'Title');
 
@@ -226,13 +245,13 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(1, SystemCollectionManagerInterface::COLLECTION_TYPE));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(1, SystemCollectionManagerInterface::COLLECTION_TYPE)->reveal());
 
         $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.media.system_collections', PermissionTypes::VIEW, 'en'));
+            ->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.media.system_collections', PermissionTypes::VIEW, 'en'));
 
-        $this->mediaManager->expects($this->never())->method('save');
+        $this->mediaManager->save(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
@@ -243,13 +262,13 @@ final class MediaUpdateToolTest extends TestCase
     {
         $this->authenticateAsUser();
 
-        $this->mediaManager->method('getById')->willReturn($this->loadedMedia(9));
+        $this->mediaManager->getById(Argument::cetera())->willReturn($this->loadedMedia(9)->reveal());
 
         $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.media.collections', PermissionTypes::EDIT, 'en'));
+            ->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.media.collections', PermissionTypes::EDIT, 'en'));
 
-        $this->mediaManager->expects($this->never())->method('save');
+        $this->mediaManager->save(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 

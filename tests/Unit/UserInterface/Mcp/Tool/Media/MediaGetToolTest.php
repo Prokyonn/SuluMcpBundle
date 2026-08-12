@@ -16,8 +16,10 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Media;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\MediaBundle\Api\Media;
 use Sulu\Bundle\MediaBundle\Entity\Collection;
 use Sulu\Bundle\MediaBundle\Entity\CollectionType;
@@ -32,54 +34,83 @@ use Sulu\Mcp\UserInterface\Mcp\Tool\Media\MediaGetTool;
 #[CoversClass(MediaGetTool::class)]
 final class MediaGetToolTest extends TestCase
 {
-    private MediaManagerInterface&MockObject $mediaManager;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<MediaManagerInterface>
+     */
+    private ObjectProphecy $mediaManager;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $permissionChecker;
+
     private MediaGetTool $tool;
 
     protected function setUp(): void
     {
-        $this->mediaManager = $this->createMock(MediaManagerInterface::class);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $this->tool = new MediaGetTool($this->mediaManager, $this->permissionChecker);
+        $this->mediaManager = $this->prophesize(MediaManagerInterface::class);
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
+        $this->tool = new MediaGetTool($this->mediaManager->reveal(), $this->permissionChecker->reveal());
     }
 
     /**
      * @param non-empty-string|null $typeKey
+     *
+     * @return ObjectProphecy<Media>
      */
-    private function mediaWithCollection(int $collectionId, ?string $typeKey = null): Media&MockObject
+    private function mediaWithCollection(int $collectionId, ?string $typeKey = null): ObjectProphecy
     {
-        $collectionType = $this->createMock(CollectionType::class);
-        $collectionType->method('getKey')->willReturn($typeKey);
+        $collectionType = new CollectionType();
+        $collectionType->setKey($typeKey);
 
-        $collection = $this->createMock(Collection::class);
-        $collection->method('getId')->willReturn($collectionId);
-        $collection->method('getType')->willReturn($collectionType);
+        $collection = $this->prophesize(Collection::class);
+        $collection->getId()->willReturn($collectionId);
+        $collection->getType()->willReturn($collectionType);
 
-        $mediaEntity = $this->createMock(MediaEntity::class);
-        $mediaEntity->method('getCollection')->willReturn($collection);
+        $mediaEntity = $this->prophesize(MediaEntity::class);
+        $mediaEntity->getCollection()->willReturn($collection->reveal());
 
-        $media = $this->createMock(Media::class);
-        $media->method('getEntity')->willReturn($mediaEntity);
+        $media = $this->prophesize(Media::class);
+        $media->getEntity()->willReturn($mediaEntity->reveal());
 
         return $media;
+    }
+
+    /**
+     * Stubs the detail getters getMedia() also reads, so this Prophecy double is not partially stubbed.
+     *
+     * @param ObjectProphecy<Media> $media
+     */
+    private function stubIrrelevantDetailGetters(ObjectProphecy $media): void
+    {
+        $media->getId()->willReturn(null);
+        $media->getTitle()->willReturn(null);
+        $media->getDescription()->willReturn(null);
+        $media->getCopyright()->willReturn(null);
+        $media->getMimeType()->willReturn(null);
+        $media->getSize()->willReturn(null);
+        $media->getUrl()->willReturn(null);
+        $media->getFormats()->willReturn(null);
     }
 
     public function testGetMediaReturnsFullDetails(): void
     {
         $media = $this->mediaWithCollection(5);
-        $media->method('getId')->willReturn(42);
-        $media->method('getTitle')->willReturn('Hero Image');
-        $media->method('getDescription')->willReturn('A beautiful hero image');
-        $media->method('getCopyright')->willReturn('(c) 2026 Example');
-        $media->method('getMimeType')->willReturn('image/png');
-        $media->method('getSize')->willReturn(54321);
-        $media->method('getUrl')->willReturn('/media/42/hero.png');
-        $media->method('getFormats')->willReturn([
+        $media->getId()->willReturn(42);
+        $media->getTitle()->willReturn('Hero Image');
+        $media->getDescription()->willReturn('A beautiful hero image');
+        $media->getCopyright()->willReturn('(c) 2026 Example');
+        $media->getMimeType()->willReturn('image/png');
+        $media->getSize()->willReturn(54321);
+        $media->getUrl()->willReturn('/media/42/hero.png');
+        $media->getFormats()->willReturn([
             'sulu-100x100' => '/media/42/hero.png?v=1-0&inline=1',
             'sulu-400x400' => '/media/42/hero.png?v=1-0',
         ]);
 
-        $this->mediaManager->method('getById')->willReturn($media);
+        $this->mediaManager->getById(Argument::cetera())->willReturn($media->reveal());
 
         $result = $this->tool->getMedia(42, 'en');
 
@@ -95,7 +126,7 @@ final class MediaGetToolTest extends TestCase
 
     public function testGetMediaReturnsErrorForMissingMedia(): void
     {
-        $this->mediaManager->method('getById')->willThrowException(new \RuntimeException('Not found'));
+        $this->mediaManager->getById(Argument::cetera())->willThrow(new \RuntimeException('Not found'));
 
         $result = $this->tool->getMedia(999, 'en');
 
@@ -109,12 +140,12 @@ final class MediaGetToolTest extends TestCase
     public function testGetMediaChecksCollectionPermission(): void
     {
         $media = $this->mediaWithCollection(7);
-        $this->mediaManager->method('getById')->willReturn($media);
+        $this->stubIrrelevantDetailGetters($media);
+        $this->mediaManager->getById(Argument::cetera())->willReturn($media->reveal());
 
         $this->permissionChecker
-            ->expects($this->once())
-            ->method('check')
-            ->with('sulu.media.collections', PermissionTypes::VIEW, 'en', Collection::class, 7);
+            ->check('sulu.media.collections', PermissionTypes::VIEW, 'en', Collection::class, 7)
+            ->shouldBeCalledOnce();
 
         $this->tool->getMedia(42, 'en');
     }
@@ -122,15 +153,16 @@ final class MediaGetToolTest extends TestCase
     public function testGetMediaAlsoChecksSystemCollectionPermission(): void
     {
         $media = $this->mediaWithCollection(1, SystemCollectionManagerInterface::COLLECTION_TYPE);
-        $this->mediaManager->method('getById')->willReturn($media);
+        $this->stubIrrelevantDetailGetters($media);
+        $this->mediaManager->getById(Argument::cetera())->willReturn($media->reveal());
 
         $calls = [];
         $this->permissionChecker
-            ->expects($this->exactly(2))
-            ->method('check')
-            ->willReturnCallback(function (string $context, string $permission) use (&$calls): void {
-                $calls[] = [$context, $permission];
-            });
+            ->check(Argument::cetera())
+            ->will(function (array $args) use (&$calls): void {
+                $calls[] = [$args[0], $args[1]];
+            })
+            ->shouldBeCalledTimes(2);
 
         $this->tool->getMedia(42, 'en');
 
@@ -146,11 +178,11 @@ final class MediaGetToolTest extends TestCase
     public function testGetMediaThrowsToolCallExceptionWhenPermissionDenied(): void
     {
         $media = $this->mediaWithCollection(7);
-        $this->mediaManager->method('getById')->willReturn($media);
+        $this->mediaManager->getById(Argument::cetera())->willReturn($media->reveal());
 
         $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.media.collections', PermissionTypes::VIEW, 'en'));
+            ->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.media.collections', PermissionTypes::VIEW, 'en'));
 
         $this->expectException(ToolCallException::class);
 
