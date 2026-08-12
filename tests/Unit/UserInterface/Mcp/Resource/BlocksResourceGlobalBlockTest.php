@@ -191,15 +191,19 @@ final class BlocksResourceGlobalBlockTest extends TestCase
         $blockMetadata->addForm('heading', $globalHeading);
         $blockMetadata->addForm('text', $globalText);
 
+        // getBlocks() scans page, article, and snippet templates; neither exists here.
+        $emptyMetadata = new TypedFormMetadata();
+
         $callCount = 0;
         $this->formMetadataProvider
             ->method('getMetadata')
-            ->willReturnCallback(function (string $key) use ($pageMetadata, $blockMetadata, &$callCount) {
+            ->willReturnCallback(function (string $key) use ($pageMetadata, $blockMetadata, $emptyMetadata, &$callCount) {
                 ++$callCount;
 
                 return match ($key) {
                     'page' => $pageMetadata,
                     'block' => $blockMetadata,
+                    'article', 'snippet' => $emptyMetadata,
                     default => throw new \LogicException('Unexpected key: '.$key),
                 };
             });
@@ -207,8 +211,8 @@ final class BlocksResourceGlobalBlockTest extends TestCase
         $result = $this->resource->getBlocks();
 
         $this->assertCount(2, $result);
-        // 'page' called once + 'block' called once = 2 total
-        $this->assertSame(2, $callCount, 'Block metadata should only be loaded once (cached)');
+        // 'page' + 'article' + 'snippet' called once each, 'block' loaded once (cached) = 4 total
+        $this->assertSame(4, $callCount, 'Block metadata should only be loaded once (cached) despite scanning three content types');
     }
 
     public function testCyclicGlobalBlockDoesNotRecurseInfinitely(): void
