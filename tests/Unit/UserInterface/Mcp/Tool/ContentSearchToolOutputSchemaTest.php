@@ -115,7 +115,7 @@ final class ContentSearchToolOutputSchemaTest extends TestCase
         $result = $tool->search('hello', 'en');
 
         $this->assertResultMatchesOutputSchema(ContentSearchTool::class, 'search', $result);
-        self::assertArrayHasKey('items', $result);
+        self::assertArrayHasKey('results', $result);
     }
 
     public function testErrorResultMatchesOutputSchema(): void

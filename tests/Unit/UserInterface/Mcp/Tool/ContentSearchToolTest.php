@@ -246,7 +246,7 @@ final class ContentSearchToolTest extends TestCase
         $result = $tool->search('hello', 'en');
 
         $this->assertSame(
-            ['items' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'],
+            ['results' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'],
             $result,
         );
     }
@@ -260,7 +260,7 @@ final class ContentSearchToolTest extends TestCase
         $result = $tool->search('hello', 'en', 'other');
 
         $this->assertSame(
-            ['items' => [], 'total' => 0, 'hint' => 'Webspace "other" is not readable with your permissions.'],
+            ['results' => [], 'total' => 0, 'hint' => 'Webspace "other" is not readable with your permissions.'],
             $result,
         );
     }
