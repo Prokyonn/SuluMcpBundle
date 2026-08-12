@@ -115,6 +115,15 @@ services:
 
     # MCP resources
     Sulu\Mcp\Application\Metadata\FieldValueExampleProvider: ~
+
+    # sulu_admin.schema_metadata_provider is private (and not autowireable) in
+    # Sulu's own container, so it must be referenced by id explicitly here.
+    Sulu\Mcp\Infrastructure\Sulu\Metadata\SchemaMetadataAdapter:
+        arguments:
+            $schemaMetadataProvider: '@sulu_admin.schema_metadata_provider'
+            $formMetadataProvider: '@sulu_admin.form_metadata_provider'
+    Sulu\Mcp\Application\Metadata\FieldSchemaGeneratorInterface: '@Sulu\Mcp\Infrastructure\Sulu\Metadata\SchemaMetadataAdapter'
+
     Sulu\Mcp\UserInterface\Mcp\Resource\TemplatesResource:
         arguments:
             $formMetadataProvider: '@sulu_admin.form_metadata_provider'

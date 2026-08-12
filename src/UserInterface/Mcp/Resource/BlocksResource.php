@@ -20,24 +20,19 @@ use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\ItemMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\SectionMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
+use Sulu\Mcp\Application\Metadata\FieldSchemaGeneratorInterface;
 
 /**
  * @internal
  */
 class BlocksResource
 {
-    /**
-     * Caps section/block nesting so a pathological (but acyclic) block definition
-     * cannot blow up the response. Real block libraries never come close — this
-     * only bites runaway or malformed metadata.
-     */
-    private const MAX_DEPTH = 20;
-
     /** @var array<string, FormMetadata>|null */
     private ?array $globalBlockForms = null;
 
     public function __construct(
         private readonly MetadataProviderInterface $formMetadataProvider,
+        private readonly FieldSchemaGeneratorInterface $schemaGenerator,
     ) {
     }
 
@@ -45,12 +40,14 @@ class BlocksResource
     #[McpResource(
         uri: 'sulu://blocks',
         name: 'sulu_blocks',
-        description: 'Available block types with their field definitions across all webspaces (per D-02: static URI cannot filter by webspace). Shows which templates each block type can be used in.',
+        description: 'Available block types with their field definitions across all webspaces (per D-02: static URI cannot filter by webspace). Each entry is `{key, label, schema, available_in_templates}`, where `schema` is a JSON Schema for one block instance\'s content and `available_in_templates` shows which templates each block type can be used in. Each schema property also carries `x-sulu-type` — the underlying Sulu field type (see `fieldTypes` in sulu_get_context) — since JSON Schema itself only expresses JSON types.',
         mimeType: 'application/json',
     )]
     public function getBlocks(): array
     {
-        $blockTypes = [];
+        /** @var array<string, FormMetadata> $blockForms */
+        $blockForms = [];
+        /** @var array<string, list<string>> $availableInTemplates */
         $availableInTemplates = [];
         foreach (['page', 'article', 'snippet'] as $contentType) {
             try {
@@ -63,23 +60,27 @@ class BlocksResource
                 continue;
             }
 
-            $this->collectBlockTypes($typedMetadata, $blockTypes, $availableInTemplates);
+            $this->collectBlockTypes($typedMetadata, $blockForms, $availableInTemplates);
         }
 
         $result = [];
-        foreach ($blockTypes as $key => $blockType) {
-            $blockType['available_in_templates'] = $availableInTemplates[$key] ?? [];
-            $result[] = $blockType;
+        foreach ($blockForms as $key => $form) {
+            $result[] = [
+                'key' => $key,
+                'label' => $form->getTitle('en'),
+                'schema' => $this->schemaGenerator->generate($form->getItems(), 'en'),
+                'available_in_templates' => $availableInTemplates[$key] ?? [],
+            ];
         }
 
         return $result;
     }
 
     /**
-     * @param array<string, array<string, mixed>> $blockTypes accumulated across content types, keyed by block type name
+     * @param array<string, FormMetadata> $blockForms accumulated across content types, keyed by block type name
      * @param array<string, list<string>> $availableInTemplates accumulated template keys per block type name
      */
-    private function collectBlockTypes(TypedFormMetadata $typedMetadata, array &$blockTypes, array &$availableInTemplates): void
+    private function collectBlockTypes(TypedFormMetadata $typedMetadata, array &$blockForms, array &$availableInTemplates): void
     {
         foreach ($typedMetadata->getForms() as $templateKey => $formMetadata) {
             $templateKey = (string) $templateKey;
@@ -87,13 +88,8 @@ class BlocksResource
                 foreach ($item->getTypes() as $blockTypeName => $blockForm) {
                     $blockTypeName = (string) $blockTypeName;
 
-                    if (!isset($blockTypes[$blockTypeName])) {
-                        $resolvedForm = $this->resolveBlockForm($blockTypeName, $blockForm);
-                        $blockTypes[$blockTypeName] = [
-                            'key' => $blockTypeName,
-                            'label' => $resolvedForm->getTitle('en'),
-                            'fields' => $this->normalizeItems($resolvedForm->getItems(), [$blockTypeName => true], 0),
-                        ];
+                    if (!isset($blockForms[$blockTypeName])) {
+                        $blockForms[$blockTypeName] = $this->resolveBlockForm($blockTypeName, $blockForm);
                         $availableInTemplates[$blockTypeName] = [];
                     }
 
@@ -114,16 +110,12 @@ class BlocksResource
      *
      * @return list<FieldMetadata>
      */
-    private function findBlockFields(array $items, int $depth = 0): array
+    private function findBlockFields(array $items): array
     {
-        if ($depth >= self::MAX_DEPTH) {
-            return [];
-        }
-
         $blockFields = [];
         foreach ($items as $item) {
             if ($item instanceof SectionMetadata) {
-                foreach ($this->findBlockFields($item->getItems(), $depth + 1) as $nested) {
+                foreach ($this->findBlockFields($item->getItems()) as $nested) {
                     $blockFields[] = $nested;
                 }
 
@@ -138,18 +130,18 @@ class BlocksResource
         return $blockFields;
     }
 
+    /**
+     * A block type declared with `<type ref="name"/>` (tagged `sulu.global_block`
+     * during parsing, see PropertiesXmlParser) carries no items of its own — the
+     * real field list lives in the separately-registered global block form.
+     */
     private function resolveBlockForm(string $blockTypeName, FormMetadata $blockForm): FormMetadata
     {
-        if ([] !== $blockForm->getItems()) {
+        if (null === $blockForm->findTag('sulu.global_block')) {
             return $blockForm;
         }
 
-        $globalBlock = $this->getGlobalBlockForms()[$blockTypeName] ?? null;
-        if (null !== $globalBlock) {
-            return $globalBlock;
-        }
-
-        return $blockForm;
+        return $this->getGlobalBlockForms()[$blockTypeName] ?? $blockForm;
     }
 
     /**
@@ -170,118 +162,5 @@ class BlocksResource
         }
 
         return $this->globalBlockForms;
-    }
-
-    /**
-     * Normalizes a list of form items into a flat field list, matching the flat
-     * `{fieldName: value}` shape Sulu stores a block's own field values in. A
-     * `<section>` inside a block type's definition (see e.g. a "box" block with a
-     * `<section name="form">`) is presentation-only grouping, so its children are
-     * flattened into the surrounding field list rather than nested under it.
-     *
-     * @param ItemMetadata[] $items
-     * @param array<string, true> $visiting block type names currently on the resolution path
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function normalizeItems(array $items, array $visiting, int $depth): array
-    {
-        $fields = [];
-        foreach ($items as $item) {
-            if ($item instanceof SectionMetadata) {
-                foreach ($this->normalizeSection($item, $visiting, $depth) as $flattened) {
-                    $fields[] = $flattened;
-                }
-
-                continue;
-            }
-
-            $fields[] = $this->normalizeField($item, $visiting, $depth);
-        }
-
-        return $fields;
-    }
-
-    /**
-     * @param array<string, true> $visiting
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function normalizeSection(SectionMetadata $section, array $visiting, int $depth): array
-    {
-        if ($depth >= self::MAX_DEPTH) {
-            return [[
-                'name' => $section->getName(),
-                'type' => 'section',
-                'label' => $section->getLabel('en') ?? $section->getName(),
-                'truncated' => true,
-            ]];
-        }
-
-        return $this->normalizeItems($section->getItems(), $visiting, $depth + 1);
-    }
-
-    /**
-     * @param array<string, true> $visiting block type names currently on the resolution path
-     *
-     * @return array<string, mixed>
-     */
-    private function normalizeField(ItemMetadata $item, array $visiting, int $depth): array
-    {
-        $field = [
-            'name' => $item->getName(),
-            'type' => $item->getType(),
-            'label' => $item->getLabel('en') ?? $item->getName(),
-        ];
-
-        if ($item instanceof FieldMetadata && 'block' === $item->getType()) {
-            $field['types'] = $this->normalizeBlockTypes($item, $visiting, $depth);
-        }
-
-        return $field;
-    }
-
-    /**
-     * @param array<string, true> $visiting block type names currently on the resolution path
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function normalizeBlockTypes(FieldMetadata $blockField, array $visiting, int $depth): array
-    {
-        $types = [];
-        foreach ($blockField->getTypes() as $typeName => $nestedBlockForm) {
-            $typeName = (string) $typeName;
-            $resolvedNested = $this->resolveBlockForm($typeName, $nestedBlockForm);
-
-            if (isset($visiting[$typeName])) {
-                $types[$typeName] = [
-                    'key' => $typeName,
-                    'label' => $resolvedNested->getTitle('en'),
-                    'fields' => [],
-                    'cyclic' => true,
-                ];
-
-                continue;
-            }
-
-            if ($depth >= self::MAX_DEPTH) {
-                $types[$typeName] = [
-                    'key' => $typeName,
-                    'label' => $resolvedNested->getTitle('en'),
-                    'fields' => [],
-                    'truncated' => true,
-                ];
-
-                continue;
-            }
-
-            $types[$typeName] = [
-                'key' => $typeName,
-                'label' => $resolvedNested->getTitle('en'),
-                'fields' => $this->normalizeItems($resolvedNested->getItems(), $visiting + [$typeName => true], $depth + 1),
-            ];
-        }
-
-        return $types;
     }
 }
