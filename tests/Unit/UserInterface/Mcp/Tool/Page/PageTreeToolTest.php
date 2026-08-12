@@ -13,12 +13,13 @@ declare(strict_types=1);
 
 namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Page;
 
-use Doctrine\Common\Collections\ArrayCollection;
 use Mcp\Capability\Attribute\McpTool;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Component\Security\Authentication\UserInterface;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Component\Security\Authorization\SecurityCheckerInterface;
 use Sulu\Component\Webspace\Manager\WebspaceCollection;
 use Sulu\Component\Webspace\Manager\WebspaceManagerInterface;
@@ -28,29 +29,41 @@ use Sulu\Mcp\Application\Security\AccessControlFilterFactory;
 use Sulu\Mcp\Application\Security\ToolPermissionChecker;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Page\PageTreeTool;
+use Sulu\Page\Domain\Model\Page;
 use Sulu\Page\Domain\Model\PageDimensionContentInterface;
 use Sulu\Page\Domain\Model\PageInterface;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
 use Sulu\Route\Domain\Model\Route;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 #[CoversClass(PageTreeTool::class)]
 final class PageTreeToolTest extends TestCase
 {
-    private PageRepositoryInterface&MockObject $pageRepository;
-    private ContentManagerInterface&MockObject $contentManager;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<PageRepositoryInterface>
+     */
+    private ObjectProphecy $pageRepository;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
     private WebspacePermissionResolver $webspacePermissionResolver;
+
     private PageTreeTool $tool;
 
     protected function setUp(): void
     {
-        $this->pageRepository = $this->createMock(PageRepositoryInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        // Default: grants the '' webspace key returned by unstubbed PageInterface
-        // mocks, so existing happy-path tests are unaffected by the new filter.
+        $this->pageRepository = $this->prophesize(PageRepositoryInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        // Default grants 'example', so existing happy-path tests are unaffected by
+        // the webspace filter.
         $this->webspacePermissionResolver = $this->webspaceResolver(['example']);
-        $this->tool = new PageTreeTool($this->pageRepository, $this->contentManager, $this->webspacePermissionResolver, new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
+        $this->tool = new PageTreeTool($this->pageRepository->reveal(), $this->contentManager->reveal(), $this->webspacePermissionResolver, new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
     }
 
     /**
@@ -68,25 +81,23 @@ final class PageTreeToolTest extends TestCase
             $webspaces[$key] = $webspace;
         }
 
-        $webspaceManager = $this->createMock(WebspaceManagerInterface::class);
-        $webspaceManager->method('getWebspaceCollection')->willReturn(new WebspaceCollection($webspaces));
+        $webspaceManager = $this->prophesize(WebspaceManagerInterface::class);
+        $webspaceManager->getWebspaceCollection()->willReturn(new WebspaceCollection($webspaces));
 
-        $securityChecker = $this->createMock(SecurityCheckerInterface::class);
-        $securityChecker->method('hasPermission')->willReturn(true);
+        $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
+        $securityChecker->hasPermission(Argument::cetera())->willReturn(true);
 
-        $tokenStorage = $this->createMock(TokenStorageInterface::class);
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($this->createMock(UserInterface::class));
-        $tokenStorage->method('getToken')->willReturn($token);
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken(new UsernamePasswordToken(new User(), 'main'));
 
-        return new WebspacePermissionResolver($webspaceManager, new ToolPermissionChecker($securityChecker, $tokenStorage));
+        return new WebspacePermissionResolver($webspaceManager->reveal(), new ToolPermissionChecker($securityChecker->reveal(), $tokenStorage));
     }
 
     public function testGetPageTreeReturnsTreeStructure(): void
     {
-        $page = $this->createPageMock('uuid-1', 'Homepage', '/');
+        $page = $this->createPage('uuid-1');
 
-        $this->pageRepository->method('findByAsTree')->willReturn([$page]);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$page]);
         $this->setupContentManagerForPage($page, 'Homepage', '/', 'homepage', 'published');
 
         $result = $this->tool->getPageTree('example', 'en');
@@ -99,9 +110,9 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeBuildsNodesWithRequiredFields(): void
     {
-        $page = $this->createPageMock('uuid-1', 'Homepage', '/');
+        $page = $this->createPage('uuid-1');
 
-        $this->pageRepository->method('findByAsTree')->willReturn([$page]);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$page]);
         $this->setupContentManagerForPage($page, 'Homepage', '/', 'homepage', 'published');
 
         $result = $this->tool->getPageTree('example', 'en');
@@ -121,30 +132,16 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeHandlesNestedChildren(): void
     {
-        $parent = $this->createMock(PageInterface::class);
-        $parent->method('getUuid')->willReturn('uuid-parent');
-        $parent->method('getParent')->willReturn(null);
+        $child = $this->createPage('uuid-child');
+        $parent = $this->createPage('uuid-parent', [$child]);
 
-        $child = $this->createMock(PageInterface::class);
-        $child->method('getUuid')->willReturn('uuid-child');
-        $child->method('getChildren')->willReturn(new ArrayCollection([]));
-        $child->method('getParent')->willReturn($parent);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$parent]);
 
-        $parent->method('getChildren')->willReturn(new ArrayCollection([$child]));
+        $parentDimensionContent = $this->createDimensionContent($parent, 'Homepage', '/', 'homepage', 'published');
+        $childDimensionContent = $this->createDimensionContent($child, 'About Us', '/about', 'default', 'draft');
 
-        $this->pageRepository->method('findByAsTree')->willReturn([$parent]);
-
-        $parentDimensionContent = $this->createDimensionContentMock('Homepage', '/', 'homepage', 'published');
-        $childDimensionContent = $this->createDimensionContentMock('About Us', '/about', 'default', 'draft');
-
-        $this->contentManager->method('resolve')
-            ->willReturnCallback(function (PageInterface $page) use ($parent, $parentDimensionContent, $childDimensionContent) {
-                if ($page === $parent) {
-                    return $parentDimensionContent;
-                }
-
-                return $childDimensionContent;
-            });
+        $this->contentManager->resolve($parent, Argument::any())->willReturn($parentDimensionContent);
+        $this->contentManager->resolve(Argument::any(), Argument::any())->willReturn($childDimensionContent);
 
         $result = $this->tool->getPageTree('example', 'en');
 
@@ -162,7 +159,7 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeReturnsEmptyTreeForEmptyWebspace(): void
     {
-        $this->pageRepository->method('findByAsTree')->willReturn([]);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([]);
 
         $result = $this->tool->getPageTree('example', 'en');
 
@@ -171,34 +168,17 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeMaxDepthStopsRecursionAtBoundary(): void
     {
-        $grandchild = $this->createMock(PageInterface::class);
-        $grandchild->method('getUuid')->willReturn('uuid-grandchild');
-        $grandchild->method('getChildren')->willReturn(new ArrayCollection([]));
-        $grandchild->method('getParent')->willReturn(null);
+        $grandchild = $this->createPage('uuid-grandchild');
+        $child = $this->createPage('uuid-child', [$grandchild]);
+        $parent = $this->createPage('uuid-parent', [$child]);
 
-        $child = $this->createMock(PageInterface::class);
-        $child->method('getUuid')->willReturn('uuid-child');
-        $child->method('getChildren')->willReturn(new ArrayCollection([$grandchild]));
-        $child->method('getParent')->willReturn(null);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$parent]);
 
-        $parent = $this->createMock(PageInterface::class);
-        $parent->method('getUuid')->willReturn('uuid-parent');
-        $parent->method('getChildren')->willReturn(new ArrayCollection([$child]));
-        $parent->method('getParent')->willReturn(null);
+        $parentDim = $this->createDimensionContent($parent, 'Parent', '/', 'default', 'published');
+        $childDim = $this->createDimensionContent($child, 'Child', '/child', 'default', 'published');
 
-        $this->pageRepository->method('findByAsTree')->willReturn([$parent]);
-
-        $parentDim = $this->createDimensionContentMock('Parent', '/', 'default', 'published');
-        $childDim = $this->createDimensionContentMock('Child', '/child', 'default', 'published');
-
-        $this->contentManager->method('resolve')
-            ->willReturnCallback(function (PageInterface $page) use ($parent, $parentDim, $childDim) {
-                if ($page === $parent) {
-                    return $parentDim;
-                }
-
-                return $childDim;
-            });
+        $this->contentManager->resolve($parent, Argument::any())->willReturn($parentDim);
+        $this->contentManager->resolve(Argument::any(), Argument::any())->willReturn($childDim);
 
         $result = $this->tool->getPageTree('example', 'en', 1);
 
@@ -213,20 +193,13 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeMaxDepthZeroReturnsOnlyRootPages(): void
     {
-        $child = $this->createMock(PageInterface::class);
-        $child->method('getUuid')->willReturn('uuid-child');
-        $child->method('getChildren')->willReturn(new ArrayCollection([]));
-        $child->method('getParent')->willReturn(null);
+        $child = $this->createPage('uuid-child');
+        $root = $this->createPage('uuid-root', [$child]);
 
-        $root = $this->createMock(PageInterface::class);
-        $root->method('getUuid')->willReturn('uuid-root');
-        $root->method('getChildren')->willReturn(new ArrayCollection([$child]));
-        $root->method('getParent')->willReturn(null);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$root]);
 
-        $this->pageRepository->method('findByAsTree')->willReturn([$root]);
-
-        $rootDim = $this->createDimensionContentMock('Root', '/', 'default', 'published');
-        $this->contentManager->method('resolve')->willReturn($rootDim);
+        $rootDim = $this->createDimensionContent($root, 'Root', '/', 'default', 'published');
+        $this->contentManager->resolve(Argument::cetera())->willReturn($rootDim);
 
         $result = $this->tool->getPageTree('example', 'en', 0);
 
@@ -237,25 +210,14 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeWithoutMaxDepthReturnsFullNesting(): void
     {
-        $grandchild = $this->createMock(PageInterface::class);
-        $grandchild->method('getUuid')->willReturn('uuid-grandchild');
-        $grandchild->method('getChildren')->willReturn(new ArrayCollection([]));
-        $grandchild->method('getParent')->willReturn(null);
+        $grandchild = $this->createPage('uuid-grandchild');
+        $child = $this->createPage('uuid-child', [$grandchild]);
+        $root = $this->createPage('uuid-root', [$child]);
 
-        $child = $this->createMock(PageInterface::class);
-        $child->method('getUuid')->willReturn('uuid-child');
-        $child->method('getChildren')->willReturn(new ArrayCollection([$grandchild]));
-        $child->method('getParent')->willReturn(null);
+        $this->pageRepository->findByAsTree(Argument::cetera())->willReturn([$root]);
 
-        $root = $this->createMock(PageInterface::class);
-        $root->method('getUuid')->willReturn('uuid-root');
-        $root->method('getChildren')->willReturn(new ArrayCollection([$child]));
-        $root->method('getParent')->willReturn(null);
-
-        $this->pageRepository->method('findByAsTree')->willReturn([$root]);
-
-        $dim = $this->createDimensionContentMock('Page', '/', 'default', 'published');
-        $this->contentManager->method('resolve')->willReturn($dim);
+        $dim = $this->createDimensionContent($root, 'Page', '/', 'default', 'published');
+        $this->contentManager->resolve(Argument::cetera())->willReturn($dim);
 
         $result = $this->tool->getPageTree('example', 'en');
 
@@ -277,9 +239,9 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeReturnsEmptyTreeWhenNoWebspaceIsPermitted(): void
     {
-        $tool = new PageTreeTool($this->pageRepository, $this->contentManager, $this->webspaceResolver([]), new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
+        $tool = new PageTreeTool($this->pageRepository->reveal(), $this->contentManager->reveal(), $this->webspaceResolver([]), new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
 
-        $this->pageRepository->expects($this->never())->method('findByAsTree');
+        $this->pageRepository->findByAsTree(Argument::cetera())->shouldNotBeCalled();
 
         $result = $tool->getPageTree('example', 'en');
 
@@ -290,9 +252,9 @@ final class PageTreeToolTest extends TestCase
 
     public function testGetPageTreeReturnsEmptyTreeWhenRequestedWebspaceIsNotPermitted(): void
     {
-        $tool = new PageTreeTool($this->pageRepository, $this->contentManager, $this->webspaceResolver(['other']), new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
+        $tool = new PageTreeTool($this->pageRepository->reveal(), $this->contentManager->reveal(), $this->webspaceResolver(['other']), new AccessControlFilterFactory(null, ['view' => 64, 'add' => 32, 'edit' => 16, 'delete' => 8, 'archive' => 4, 'live' => 2, 'security' => 1]));
 
-        $this->pageRepository->expects($this->never())->method('findByAsTree');
+        $this->pageRepository->findByAsTree(Argument::cetera())->shouldNotBeCalled();
 
         $result = $tool->getPageTree('example', 'en');
 
@@ -307,13 +269,12 @@ final class PageTreeToolTest extends TestCase
     public function testGetPageTreeScopesQueryToRequestedWebspace(): void
     {
         $this->pageRepository
-            ->expects($this->once())
-            ->method('findByAsTree')
-            ->with(
-                $this->callback(static fn (array $filters): bool => 'example' === ($filters['webspaceKey'] ?? null)),
-                $this->anything(),
-                $this->anything(),
+            ->findByAsTree(
+                Argument::that(static fn (array $filters): bool => 'example' === ($filters['webspaceKey'] ?? null)),
+                Argument::any(),
+                Argument::any(),
             )
+            ->shouldBeCalledOnce()
             ->willReturn([]);
 
         $this->tool->getPageTree('example', 'en');
@@ -322,31 +283,32 @@ final class PageTreeToolTest extends TestCase
     /**
      * @param PageInterface[] $children
      */
-    private function createPageMock(string $uuid, string $title, string $url, array $children = []): PageInterface&MockObject
+    private function createPage(string $uuid, array $children = []): PageInterface
     {
-        $page = $this->createMock(PageInterface::class);
-        $page->method('getUuid')->willReturn($uuid);
-        $page->method('getChildren')->willReturn(new ArrayCollection($children));
-        $page->method('getParent')->willReturn(null);
+        $page = new Page($uuid);
+        $page->setWebspaceKey('example');
+
+        foreach ($children as $child) {
+            $child->setParent($page);
+            $page->addChild($child);
+        }
 
         return $page;
     }
 
-    private function createDimensionContentMock(
+    private function createDimensionContent(
+        PageInterface $page,
         string $title,
         string $slug,
         string $templateKey,
         string $workflowPlace,
-    ): PageDimensionContentInterface&MockObject {
-        $dimensionContent = $this->createMock(PageDimensionContentInterface::class);
-        $dimensionContent->method('getTitle')->willReturn($title);
-        $dimensionContent->method('getTemplateKey')->willReturn($templateKey);
-        $dimensionContent->method('getWorkflowPlace')->willReturn($workflowPlace);
-        $dimensionContent->method('getAvailableLocales')->willReturn(['en']);
-
-        $route = $this->createMock(Route::class);
-        $route->method('getSlug')->willReturn($slug);
-        $dimensionContent->method('getRoute')->willReturn($route);
+    ): PageDimensionContentInterface {
+        $dimensionContent = $page->createDimensionContent();
+        $dimensionContent->setTemplateKey($templateKey);
+        $dimensionContent->setTemplateData(['title' => $title]);
+        $dimensionContent->setWorkflowPlace($workflowPlace);
+        $dimensionContent->addAvailableLocale('en');
+        $dimensionContent->setRoute(new Route(PageInterface::RESOURCE_KEY, $page->getUuid(), 'en', $slug));
 
         return $dimensionContent;
     }
@@ -358,7 +320,7 @@ final class PageTreeToolTest extends TestCase
         string $templateKey,
         string $workflowPlace,
     ): void {
-        $dimensionContent = $this->createDimensionContentMock($title, $slug, $templateKey, $workflowPlace);
-        $this->contentManager->method('resolve')->with($page, $this->anything())->willReturn($dimensionContent);
+        $dimensionContent = $this->createDimensionContent($page, $title, $slug, $templateKey, $workflowPlace);
+        $this->contentManager->resolve($page, Argument::any())->willReturn($dimensionContent);
     }
 }
