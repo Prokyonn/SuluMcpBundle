@@ -15,10 +15,12 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool;
 
 use Mcp\Capability\Attribute\McpTool;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Component\Localization\Localization;
-use Sulu\Component\Security\Authentication\UserInterface;
 use Sulu\Component\Security\Authorization\SecurityCheckerInterface;
 use Sulu\Component\Webspace\Manager\WebspaceCollection;
 use Sulu\Component\Webspace\Manager\WebspaceManagerInterface;
@@ -26,24 +28,29 @@ use Sulu\Component\Webspace\Webspace;
 use Sulu\Mcp\Application\Security\ToolPermissionChecker;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\UserInterface\Mcp\Tool\PingTool;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 #[CoversClass(PingTool::class)]
 final class PingToolTest extends TestCase
 {
-    private WebspaceManagerInterface&MockObject $webspaceManager;
-    private TokenStorageInterface&MockObject $tokenStorage;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<WebspaceManagerInterface>
+     */
+    private ObjectProphecy $webspaceManager;
+    private TokenStorage $tokenStorage;
     private PingTool $pingTool;
 
     protected function setUp(): void
     {
-        $this->webspaceManager = $this->createMock(WebspaceManagerInterface::class);
-        $this->tokenStorage = $this->createMock(TokenStorageInterface::class);
+        $this->webspaceManager = $this->prophesize(WebspaceManagerInterface::class);
+        $this->tokenStorage = new TokenStorage();
 
         // Real WebspacePermissionResolver granting EDIT everywhere, so existing tests see
         // every webspace unless they build their own PingTool with a narrower resolver.
-        $this->pingTool = new PingTool($this->webspaceManager, $this->tokenStorage, $this->grantAllResolver());
+        $this->pingTool = new PingTool($this->webspaceManager->reveal(), $this->tokenStorage, $this->grantAllResolver());
     }
 
     public function testPingReturnsStatusOkWithWebspaceList(): void
@@ -63,7 +70,6 @@ final class PingToolTest extends TestCase
 
     public function testPingReturnsNullUserWhenUnauthenticated(): void
     {
-        $this->tokenStorage->method('getToken')->willReturn(null);
         $this->setupWebspaceCollection([]);
 
         $result = $this->pingTool->ping();
@@ -87,21 +93,20 @@ final class PingToolTest extends TestCase
         $this->setupTokenWithUser('admin');
         $this->setupWebspaceCollection(['example' => ['en'], 'blog' => ['en']]);
 
-        $securityChecker = $this->createMock(SecurityCheckerInterface::class);
-        $securityChecker->method('hasPermission')->willReturnCallback(
-            static fn ($condition, string $permission): bool => 'sulu.webspaces.example' === $condition->getSecurityContext(),
+        $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
+        $securityChecker->hasPermission(Argument::cetera())->will(
+            static fn (array $args): bool => 'sulu.webspaces.example' === $args[0]->getSecurityContext(),
         );
-        $tokenStorage = $this->createMock(TokenStorageInterface::class);
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($this->createMock(UserInterface::class));
-        $tokenStorage->method('getToken')->willReturn($token);
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken(new UsernamePasswordToken(new User(), 'main'));
 
         $resolver = new WebspacePermissionResolver(
-            $this->webspaceManager,
-            new ToolPermissionChecker($securityChecker, $tokenStorage),
+            $this->webspaceManager->reveal(),
+            new ToolPermissionChecker($securityChecker->reveal(), $tokenStorage),
         );
 
-        $pingTool = new PingTool($this->webspaceManager, $this->tokenStorage, $resolver);
+        $pingTool = new PingTool($this->webspaceManager->reveal(), $this->tokenStorage, $resolver);
 
         $result = $pingTool->ping();
 
@@ -115,24 +120,23 @@ final class PingToolTest extends TestCase
      */
     private function grantAllResolver(): WebspacePermissionResolver
     {
-        $securityChecker = $this->createMock(SecurityCheckerInterface::class);
-        $securityChecker->method('hasPermission')->willReturn(true);
-        $tokenStorage = $this->createMock(TokenStorageInterface::class);
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($this->createMock(UserInterface::class));
-        $tokenStorage->method('getToken')->willReturn($token);
+        $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
+        $securityChecker->hasPermission(Argument::cetera())->willReturn(true);
+
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken(new UsernamePasswordToken(new User(), 'main'));
 
         return new WebspacePermissionResolver(
-            $this->webspaceManager,
-            new ToolPermissionChecker($securityChecker, $tokenStorage),
+            $this->webspaceManager->reveal(),
+            new ToolPermissionChecker($securityChecker->reveal(), $tokenStorage),
         );
     }
 
     private function setupTokenWithUser(string $username): void
     {
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUserIdentifier')->willReturn($username);
-        $this->tokenStorage->method('getToken')->willReturn($token);
+        $user = new User();
+        $user->setUsername($username);
+        $this->tokenStorage->setToken(new UsernamePasswordToken($user, 'main'));
     }
 
     /**
@@ -142,22 +146,15 @@ final class PingToolTest extends TestCase
     {
         $webspaces = [];
         foreach ($webspacesWithLocales as $key => $locales) {
-            $localizations = \array_map(function (string $locale) {
-                $localization = $this->createMock(Localization::class);
-                $localization->method('getLocale')->willReturn($locale);
-
-                return $localization;
-            }, $locales);
-
-            $ws = $this->createMock(Webspace::class);
-            $ws->method('getKey')->willReturn($key);
-            $ws->method('getName')->willReturn($key);
-            $ws->method('getAllLocalizations')->willReturn($localizations);
-            $webspaces[$key] = $ws;
+            $webspace = new Webspace();
+            $webspace->setKey($key);
+            $webspace->setName($key);
+            $webspace->setLocalizations(\array_map(static fn (string $locale) => new Localization($locale), $locales));
+            $webspaces[$key] = $webspace;
         }
 
         // A real WebspaceCollection (not a mock): WebspacePermissionResolver
         // iterates the collection itself (IteratorAggregate), not just getWebspaces().
-        $this->webspaceManager->method('getWebspaceCollection')->willReturn(new WebspaceCollection($webspaces));
+        $this->webspaceManager->getWebspaceCollection()->willReturn(new WebspaceCollection($webspaces));
     }
 }

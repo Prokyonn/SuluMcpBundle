@@ -16,21 +16,26 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Command;
 use League\Bundle\OAuth2ServerBundle\Manager\ClientManagerInterface;
 use League\Bundle\OAuth2ServerBundle\Model\ClientInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Mcp\UserInterface\Command\CreateMcpClientCommand;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[CoversClass(CreateMcpClientCommand::class)]
 final class CreateMcpClientCommandTest extends TestCase
 {
-    private ClientManagerInterface&MockObject $clientManager;
+    use ProphecyTrait;
+
+    /** @var ObjectProphecy<ClientManagerInterface> */
+    private ObjectProphecy $clientManager;
     private CommandTester $tester;
 
     protected function setUp(): void
     {
-        $this->clientManager = $this->createMock(ClientManagerInterface::class);
-        $command = new CreateMcpClientCommand($this->clientManager, 'https://sulu.example.com', '/admin/mcp');
+        $this->clientManager = $this->prophesize(ClientManagerInterface::class);
+        $command = new CreateMcpClientCommand($this->clientManager->reveal(), 'https://sulu.example.com', '/admin/mcp');
         $this->tester = new CommandTester($command);
     }
 
@@ -54,7 +59,7 @@ final class CreateMcpClientCommandTest extends TestCase
 
     public function testNonInteractiveChatgptWithoutRedirectUriFails(): void
     {
-        $this->clientManager->expects($this->never())->method('save');
+        $this->clientManager->save(Argument::cetera())->shouldNotBeCalled();
 
         $exitCode = $this->tester->execute(
             ['name' => 'ChatGPT', '--client' => 'chatgpt'],
@@ -97,7 +102,7 @@ final class CreateMcpClientCommandTest extends TestCase
 
     public function testNonInteractiveCoworkWithoutRedirectUriFails(): void
     {
-        $this->clientManager->expects($this->never())->method('save');
+        $this->clientManager->save(Argument::cetera())->shouldNotBeCalled();
 
         $exitCode = $this->tester->execute(
             ['name' => 'Cowork', '--client' => 'claude-cowork'],
@@ -109,7 +114,7 @@ final class CreateMcpClientCommandTest extends TestCase
 
     public function testUnknownClientFails(): void
     {
-        $this->clientManager->expects($this->never())->method('save');
+        $this->clientManager->save(Argument::cetera())->shouldNotBeCalled();
 
         $exitCode = $this->tester->execute(
             ['name' => 'X', '--client' => 'bogus'],
@@ -125,10 +130,10 @@ final class CreateMcpClientCommandTest extends TestCase
     private function captureSavedClient(): \Closure
     {
         $client = null;
-        $this->clientManager->expects($this->once())
-            ->method('save')
-            ->willReturnCallback(static function (ClientInterface $saved) use (&$client): void {
-                $client = $saved;
+        $this->clientManager->save(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use (&$client): void {
+                $client = $args[0];
             });
 
         return static function () use (&$client): ?ClientInterface {
@@ -142,10 +147,11 @@ final class CreateMcpClientCommandTest extends TestCase
     private function captureSavedRedirectUris(int $expectedSaves): \Closure
     {
         $redirectUris = [];
-        $this->clientManager->expects($this->exactly($expectedSaves))
-            ->method('save')
-            ->willReturnCallback(function (ClientInterface $saved) use (&$redirectUris): void {
-                $redirectUris[] = $this->stringValues($saved->getRedirectUris());
+        $self = $this;
+        $this->clientManager->save(Argument::cetera())
+            ->shouldBeCalledTimes($expectedSaves)
+            ->will(static function (array $args) use (&$redirectUris, $self): void {
+                $redirectUris[] = $self->stringValues($args[0]->getRedirectUris());
             });
 
         return static function () use (&$redirectUris): array {

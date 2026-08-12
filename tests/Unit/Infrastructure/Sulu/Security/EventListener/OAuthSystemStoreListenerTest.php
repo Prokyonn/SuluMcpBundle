@@ -15,55 +15,68 @@ namespace Sulu\Mcp\Tests\Unit\Infrastructure\Sulu\Security\EventListener;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Bundle\SecurityBundle\System\SystemStoreInterface;
 use Sulu\Mcp\Infrastructure\Sulu\Security\EventListener\OAuthSystemStoreListener;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 #[CoversClass(OAuthSystemStoreListener::class)]
 final class OAuthSystemStoreListenerTest extends TestCase
 {
+    use ProphecyTrait;
+
     private function createRequestEvent(string $pathInfo, int $type = HttpKernelInterface::MAIN_REQUEST): RequestEvent
     {
-        $kernel = $this->createMock(HttpKernelInterface::class);
+        return new RequestEvent($this->noopKernel(), Request::create($pathInfo), $type);
+    }
 
-        return new RequestEvent($kernel, Request::create($pathInfo), $type);
+    private function noopKernel(): HttpKernelInterface
+    {
+        return new class implements HttpKernelInterface {
+            public function handle(Request $request, int $type = self::MAIN_REQUEST, bool $catch = true): Response
+            {
+                throw new \LogicException('This test kernel is never expected to handle a request.');
+            }
+        };
     }
 
     public function testSetsSystemOnMcpPath(): void
     {
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::once())->method('setSystem')->with('Sulu');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem('Sulu')->shouldBeCalledOnce();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp');
         $listener->onKernelRequest($this->createRequestEvent('/admin/mcp'));
     }
 
     public function testSetsConfiguredSystemOnMcpPath(): void
     {
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::once())->method('setSystem')->with('Website');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem('Website')->shouldBeCalledOnce();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp', 'Website');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp', 'Website');
         $listener->onKernelRequest($this->createRequestEvent('/admin/mcp'));
     }
 
     public function testLeavesNonMcpPathUntouched(): void
     {
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::never())->method('setSystem');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem(Argument::cetera())->shouldNotBeCalled();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp');
         $listener->onKernelRequest($this->createRequestEvent('/admin'));
     }
 
     public function testLeavesAdjacentPathSharingPrefixUntouched(): void
     {
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::never())->method('setSystem');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem(Argument::cetera())->shouldNotBeCalled();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp');
         $listener->onKernelRequest($this->createRequestEvent('/admin/mcpfoo'));
     }
 
@@ -71,19 +84,19 @@ final class OAuthSystemStoreListenerTest extends TestCase
     {
         // The mcp-bundle route loader registers exactly one route at the
         // configured path -- no sub-paths are served.
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::never())->method('setSystem');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem(Argument::cetera())->shouldNotBeCalled();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp');
         $listener->onKernelRequest($this->createRequestEvent('/admin/mcp/nested'));
     }
 
     public function testIgnoresSubRequests(): void
     {
-        $systemStore = $this->createMock(SystemStoreInterface::class);
-        $systemStore->expects(self::never())->method('setSystem');
+        $systemStore = $this->prophesize(SystemStoreInterface::class);
+        $systemStore->setSystem(Argument::cetera())->shouldNotBeCalled();
 
-        $listener = new OAuthSystemStoreListener($systemStore, '/admin/mcp');
+        $listener = new OAuthSystemStoreListener($systemStore->reveal(), '/admin/mcp');
         $listener->onKernelRequest($this->createRequestEvent('/admin/mcp', HttpKernelInterface::SUB_REQUEST));
     }
 }

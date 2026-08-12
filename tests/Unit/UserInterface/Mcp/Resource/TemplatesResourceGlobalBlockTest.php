@@ -14,8 +14,10 @@ declare(strict_types=1);
 namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Resource;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
@@ -25,13 +27,16 @@ use Sulu\Mcp\UserInterface\Mcp\Resource\TemplatesResource;
 #[CoversClass(TemplatesResource::class)]
 final class TemplatesResourceGlobalBlockTest extends TestCase
 {
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
+    use ProphecyTrait;
+
+    /** @var ObjectProphecy<MetadataProviderInterface> */
+    private ObjectProphecy $formMetadataProvider;
     private TemplatesResource $resource;
 
     protected function setUp(): void
     {
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->resource = new TemplatesResource($this->formMetadataProvider);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
+        $this->resource = new TemplatesResource($this->formMetadataProvider->reveal());
     }
 
     public function testResolvesBlockFieldsFromGlobalBlockDefinition(): void
@@ -64,13 +69,10 @@ final class TemplatesResourceGlobalBlockTest extends TestCase
         $blockMetadata = new TypedFormMetadata();
         $blockMetadata->addForm('heading', $globalBlockForm);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                'block' => $blockMetadata,
-                default => throw new \LogicException('Unexpected: '.$key),
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('block', Argument::cetera())->willReturn($blockMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())
+            ->willThrow(new \LogicException('Unexpected metadata key'));
 
         $result = $this->resource->getTemplates();
 
@@ -117,12 +119,9 @@ final class TemplatesResourceGlobalBlockTest extends TestCase
         $pageMetadata = new TypedFormMetadata();
         $pageMetadata->addForm('default', $templateForm);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                default => throw new \LogicException('Should not load block metadata for inline blocks'),
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())
+            ->willThrow(new \LogicException('Should not load block metadata for inline blocks'));
 
         $result = $this->resource->getTemplates();
 
@@ -181,13 +180,10 @@ final class TemplatesResourceGlobalBlockTest extends TestCase
         $blockMetadata->addForm('heading', $globalHeading);
         $blockMetadata->addForm('quote', $globalQuote);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                'block' => $blockMetadata,
-                default => throw new \LogicException('Unexpected: '.$key),
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('block', Argument::cetera())->willReturn($blockMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())
+            ->willThrow(new \LogicException('Unexpected metadata key'));
 
         $result = $this->resource->getTemplates();
 
@@ -243,13 +239,10 @@ final class TemplatesResourceGlobalBlockTest extends TestCase
         $blockMetadata = new TypedFormMetadata();
         $blockMetadata->addForm('section', $globalSection);
 
-        $this->formMetadataProvider
-            ->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => match ($key) {
-                'page' => $pageMetadata,
-                'block' => $blockMetadata,
-                default => throw new \LogicException('Unexpected key: '.$key),
-            });
+        $this->formMetadataProvider->getMetadata('page', Argument::cetera())->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('block', Argument::cetera())->willReturn($blockMetadata);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())
+            ->willThrow(new \LogicException('Unexpected metadata key'));
 
         $result = $this->resource->getTemplates();
 

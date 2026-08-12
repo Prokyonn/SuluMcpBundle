@@ -13,18 +13,21 @@ declare(strict_types=1);
 
 namespace Sulu\Mcp\Tests\Unit\Infrastructure\Mcp;
 
+use Mcp\Capability\Registry;
 use Mcp\Capability\Registry\ReferenceHandler;
-use Mcp\Capability\RegistryInterface;
-use Mcp\Exception\ToolNotFoundException;
 use Mcp\Schema\JsonRpc\Error;
 use Mcp\Schema\JsonRpc\Response;
 use Mcp\Schema\Request\CallToolRequest;
 use Mcp\Schema\Result\CallToolResult;
+use Mcp\Server\Session\InMemorySessionStore;
+use Mcp\Server\Session\Session;
 use Mcp\Server\Session\SessionInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Component\Security\Authentication\UserInterface;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Bundle\SecurityBundle\Entity\User;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Component\Security\Authorization\SecurityCheckerInterface;
 use Sulu\Component\Webspace\Manager\WebspaceCollection;
@@ -36,20 +39,32 @@ use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\Infrastructure\Mcp\PermissionAwareCallToolHandler;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
 use Sulu\Mcp\Tests\Application\TestBundle\Metadata\TestGroupProvider;
-use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 #[CoversClass(PermissionAwareCallToolHandler::class)]
 final class PermissionAwareCallToolHandlerTest extends TestCase
 {
-    private ToolPermissionCheckerInterface&MockObject $checker;
-    private RegistryInterface&MockObject $registry;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $checker;
+
+    /**
+     * The real Mcp\Capability\Registry is cheap to construct; left empty, its
+     * getTool() naturally throws ToolNotFoundException, which is exactly what
+     * every "reached the inner handler" test in this file relies on.
+     */
+    private Registry $registry;
+
     private WebspacePermissionResolver $webspacePermissionResolver;
 
     protected function setUp(): void
     {
-        $this->checker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $this->registry = $this->createMock(RegistryInterface::class);
+        $this->checker = $this->prophesize(ToolPermissionCheckerInterface::class);
+        $this->registry = new Registry();
         // Default: no webspaces, so sentinel-based coarse checks fail closed
         // unless a test opts into a real resolver via handler().
         $this->webspacePermissionResolver = $this->webspaceResolver([]);
@@ -70,24 +85,22 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
             $webspaces[$key] = $webspace;
         }
 
-        $webspaceManager = $this->createMock(WebspaceManagerInterface::class);
-        $webspaceManager->method('getWebspaceCollection')->willReturn(new WebspaceCollection($webspaces));
+        $webspaceManager = $this->prophesize(WebspaceManagerInterface::class);
+        $webspaceManager->getWebspaceCollection()->willReturn(new WebspaceCollection($webspaces));
 
-        $securityChecker = $this->createMock(SecurityCheckerInterface::class);
-        $securityChecker->method('hasPermission')->willReturnCallback(
-            static fn ($condition, string $permission): bool => \in_array(
-                str_replace('sulu.webspaces.', '', $condition->getSecurityContext()),
+        $securityChecker = $this->prophesize(SecurityCheckerInterface::class);
+        $securityChecker->hasPermission(Argument::cetera())->will(
+            static fn ($args): bool => \in_array(
+                str_replace('sulu.webspaces.', '', $args[0]->getSecurityContext()),
                 $grantedWebspaceKeys,
                 true,
             ),
         );
 
-        $tokenStorage = $this->createMock(TokenStorageInterface::class);
-        $token = $this->createMock(TokenInterface::class);
-        $token->method('getUser')->willReturn($this->createMock(UserInterface::class));
-        $tokenStorage->method('getToken')->willReturn($token);
+        $tokenStorage = new TokenStorage();
+        $tokenStorage->setToken(new UsernamePasswordToken(new User(), 'main'));
 
-        return new WebspacePermissionResolver($webspaceManager, new ToolPermissionChecker($securityChecker, $tokenStorage));
+        return new WebspacePermissionResolver($webspaceManager->reveal(), new ToolPermissionChecker($securityChecker->reveal(), $tokenStorage));
     }
 
     /**
@@ -98,7 +111,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         return new PermissionAwareCallToolHandler(
             $this->registry,
             new ReferenceHandler(null),
-            $this->checker,
+            $this->checker->reveal(),
             $webspacePermissionResolver ?? $this->webspacePermissionResolver,
             new ArticleSecurityContextResolver(TestGroupProvider::singleGroup()),
             $map,
@@ -117,9 +130,14 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
     }
 
+    private function session(): SessionInterface
+    {
+        return new Session(new InMemorySessionStore());
+    }
+
     public function testDeniedStaticContextReturnsIsError(): void
     {
-        $this->checker->method('has')->willReturn(false);
+        $this->checker->has(Argument::cetera())->willReturn(false);
         $handler = $this->handler([
             'sulu_tag_create' => [
                 'name' => 'sulu_tag_create',
@@ -130,7 +148,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
 
         $request = $this->request('sulu_tag_create', ['name' => 'x']);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;
@@ -140,11 +158,11 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testUndeclaredNonAllowlistedToolIsDenied(): void
     {
-        $this->checker->expects(self::never())->method('has');
+        $this->checker->has(Argument::cetera())->shouldNotBeCalled();
         $handler = $this->handler([]);
 
         $request = $this->request('sulu_mystery_tool', []);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;
@@ -154,14 +172,13 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testAllowlistedToolNeverConsultsPermissionChecker(): void
     {
-        $this->checker->expects(self::never())->method('has');
-        $this->checker->expects(self::never())->method('check');
-        $this->registry->method('getTool')->willThrowException(new ToolNotFoundException('sulu_ping'));
+        $this->checker->has(Argument::cetera())->shouldNotBeCalled();
+        $this->checker->check(Argument::cetera())->shouldNotBeCalled();
 
         $handler = $this->handler([]);
 
         $request = $this->request('sulu_ping', []);
-        $result = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $result = $handler->handle($request, $this->session());
 
         // Reached the inner handler, which reports METHOD_NOT_FOUND for the unregistered tool.
         self::assertInstanceOf(Error::class, $result);
@@ -169,10 +186,9 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testCoarseCheckDeniesWhenNoSingleCandidateGrantsAllRequirements(): void
     {
-        $this->checker->method('has')->willReturnCallback(
-            static fn (string $context, string $permission): bool => ('ctx_a' === $context && 'edit' === $permission)
-                || ('ctx_b' === $context && 'delete' === $permission),
-        );
+        $this->checker->has('ctx_a', 'edit', Argument::cetera())->willReturn(true);
+        $this->checker->has('ctx_b', 'delete', Argument::cetera())->willReturn(true);
+        $this->checker->has(Argument::cetera())->willReturn(false);
 
         $handler = $this->handler([
             'sulu_thing_delete' => [
@@ -187,7 +203,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
 
         $request = $this->request('sulu_thing_delete', ['id' => 1]);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;
@@ -197,11 +213,9 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testCoarseCheckDelegatesWhenSingleCandidateGrantsAllRequirements(): void
     {
-        $this->checker->method('has')->willReturnCallback(
-            static fn (string $context, string $permission): bool => 'ctx_a' === $context
-                && ('edit' === $permission || 'delete' === $permission),
-        );
-        $this->registry->method('getTool')->willThrowException(new ToolNotFoundException('sulu_thing_delete'));
+        $this->checker->has('ctx_a', 'edit', Argument::cetera())->willReturn(true);
+        $this->checker->has('ctx_a', 'delete', Argument::cetera())->willReturn(true);
+        $this->checker->has(Argument::cetera())->willReturn(false);
 
         $handler = $this->handler([
             'sulu_thing_delete' => [
@@ -216,7 +230,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
 
         $request = $this->request('sulu_thing_delete', ['id' => 1]);
-        $result = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $result = $handler->handle($request, $this->session());
 
         // Passed the preflight (both requirements granted on ctx_a); reaches
         // the inner handler, which reports METHOD_NOT_FOUND.
@@ -225,7 +239,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testEmptyRequirementsIsDenied(): void
     {
-        $this->checker->expects(self::never())->method('has');
+        $this->checker->has(Argument::cetera())->shouldNotBeCalled();
 
         $handler = $this->handler([
             'sulu_no_requirements' => [
@@ -237,7 +251,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
 
         $request = $this->request('sulu_no_requirements', []);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;
@@ -247,8 +261,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testAnyWebspaceSentinelDelegatesWhenResolverGrantsAWebspace(): void
     {
-        $this->checker->expects(self::never())->method('has');
-        $this->registry->method('getTool')->willThrowException(new ToolNotFoundException('sulu_page_get'));
+        $this->checker->has(Argument::cetera())->shouldNotBeCalled();
 
         $handler = $this->handler(
             [
@@ -263,7 +276,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         );
 
         $request = $this->request('sulu_page_get', ['uuid' => 'x']);
-        $result = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $result = $handler->handle($request, $this->session());
 
         // Reached the inner handler, which reports METHOD_NOT_FOUND for the unregistered tool.
         self::assertInstanceOf(Error::class, $result);
@@ -284,7 +297,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         );
 
         $request = $this->request('sulu_page_get', ['uuid' => 'x']);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;
@@ -294,7 +307,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
 
     public function testPreflightExceptionFailsClosed(): void
     {
-        $this->checker->method('has')->willThrowException(new \RuntimeException('boom'));
+        $this->checker->has(Argument::cetera())->willThrow(new \RuntimeException('boom'));
 
         $handler = $this->handler([
             'sulu_tag_create' => [
@@ -306,7 +319,7 @@ final class PermissionAwareCallToolHandlerTest extends TestCase
         ]);
 
         $request = $this->request('sulu_tag_create', ['name' => 'x']);
-        $response = $handler->handle($request, $this->createMock(SessionInterface::class));
+        $response = $handler->handle($request, $this->session());
 
         self::assertInstanceOf(Response::class, $response);
         $result = $response->result;

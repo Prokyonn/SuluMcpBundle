@@ -15,12 +15,16 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Controller\Website;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Mcp\UserInterface\Controller\Website\WellKnownController;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 #[CoversClass(WellKnownController::class)]
 final class WellKnownControllerTest extends TestCase
 {
+    use ProphecyTrait;
+
     public function testProtectedResourceMetadataUsesConfiguredScopesAndMcpPath(): void
     {
         $controller = new WellKnownController($this->urlGenerator(), 'https://sulu.example.com/', '/admin/custom-mcp', ['mcp:tools']);
@@ -54,12 +58,12 @@ final class WellKnownControllerTest extends TestCase
             'sulu_mcp_client_registration' => '/admin/mcp/register',
         ];
 
-        $urlGenerator = $this->createMock(UrlGeneratorInterface::class);
-        $urlGenerator->method('generate')->willReturnCallback(
-            static fn (string $name): string => $paths[$name] ?? self::fail('Unexpected route "'.$name.'".'),
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate(Argument::cetera())->will(
+            static fn (array $args): string => $paths[$args[0]] ?? self::fail('Unexpected route "'.$args[0].'".'),
         );
 
-        return $urlGenerator;
+        return $urlGenerator->reveal();
     }
 
     /**

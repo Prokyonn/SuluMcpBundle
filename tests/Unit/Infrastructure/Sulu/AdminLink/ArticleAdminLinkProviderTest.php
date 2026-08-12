@@ -15,8 +15,10 @@ namespace Sulu\Mcp\Tests\Unit\Infrastructure\Sulu\AdminLink;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Article\Infrastructure\Sulu\Admin\ArticleAdmin;
 use Sulu\Bundle\AdminBundle\Admin\View\View;
 use Sulu\Bundle\AdminBundle\Admin\View\ViewRegistry;
@@ -26,16 +28,23 @@ use Sulu\Mcp\Infrastructure\Sulu\AdminLink\ArticleAdminLinkProvider;
 #[CoversClass(ArticleAdminLinkProvider::class)]
 final class ArticleAdminLinkProviderTest extends TestCase
 {
-    private ViewRegistry&MockObject $viewRegistry;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<ViewRegistry>
+     */
+    private ObjectProphecy $viewRegistry;
+
     private ArticleAdminLinkProvider $provider;
 
     protected function setUp(): void
     {
         $prefix = ArticleAdmin::EDIT_TABS_VIEW.'_';
 
-        $this->viewRegistry = $this->createMock(ViewRegistry::class);
-        $this->viewRegistry->method('findViewByName')->willReturnCallback(
-            static function (string $name) use ($prefix): View {
+        $this->viewRegistry = $this->prophesize(ViewRegistry::class);
+        $this->viewRegistry->findViewByName(Argument::any())->will(
+            static function (array $args) use ($prefix): View {
+                $name = $args[0];
                 if (!\str_starts_with($name, $prefix)) {
                     throw new ViewNotFoundException($name);
                 }
@@ -48,7 +57,7 @@ final class ArticleAdminLinkProviderTest extends TestCase
             }
         );
 
-        $this->provider = new ArticleAdminLinkProvider($this->viewRegistry);
+        $this->provider = new ArticleAdminLinkProvider($this->viewRegistry->reveal());
     }
 
     public function testGetTypeReturnsArticle(): void
