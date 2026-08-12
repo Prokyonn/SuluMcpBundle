@@ -62,10 +62,6 @@ class ContentSearchTool
         outputSchema: [
             'type' => 'object',
             'properties' => [
-                // The no-permitted-webspace early-return paths use "items" (always []);
-                // the success path uses "results" instead — the tool is inconsistent
-                // about the key name, so both are declared, each optional.
-                'items' => ['type' => 'array', 'items' => self::RESULT_ITEM_SCHEMA],
                 'results' => ['type' => 'array', 'items' => self::RESULT_ITEM_SCHEMA],
                 ...OutputSchema::PAGINATION_PROPERTIES,
                 'error' => OutputSchema::ERROR_PROPERTY,
@@ -93,12 +89,12 @@ class ContentSearchTool
         // the caller may EDIT is the best available mirror.
         $permitted = $this->webspacePermissionResolver->permittedWebspaceKeys(PermissionTypes::VIEW, $locale);
         if ([] === $permitted) {
-            return ['items' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'];
+            return ['results' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'];
         }
 
         $effective = null !== $webspace ? array_values(array_intersect($permitted, [$webspace])) : $permitted;
         if ([] === $effective) {
-            return ['items' => [], 'total' => 0, 'hint' => \sprintf('Webspace "%s" is not readable with your permissions.', $webspace)];
+            return ['results' => [], 'total' => 0, 'hint' => \sprintf('Webspace "%s" is not readable with your permissions.', $webspace)];
         }
 
         try {
