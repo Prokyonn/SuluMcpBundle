@@ -15,35 +15,50 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Taxonomy;
 
 use Mcp\Capability\Attribute\McpTool;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Bundle\TagBundle\Tag\TagInterface;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Bundle\TagBundle\Entity\Tag;
 use Sulu\Bundle\TagBundle\Tag\TagRepositoryInterface;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Taxonomy\TagListTool;
 
 #[CoversClass(TagListTool::class)]
 final class TagListToolTest extends TestCase
 {
-    private TagRepositoryInterface&MockObject $tagRepository;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<TagRepositoryInterface>
+     */
+    private ObjectProphecy $tagRepository;
+
     private TagListTool $tool;
 
     protected function setUp(): void
     {
-        $this->tagRepository = $this->createMock(TagRepositoryInterface::class);
-        $this->tool = new TagListTool($this->tagRepository);
+        $this->tagRepository = $this->prophesize(TagRepositoryInterface::class);
+        $this->tool = new TagListTool($this->tagRepository->reveal());
+    }
+
+    /**
+     * @return list<Tag>
+     */
+    private function tags(int $count): array
+    {
+        $tags = [];
+        for ($i = 1; $i <= $count; ++$i) {
+            $tag = new Tag();
+            $tag->setId($i);
+            $tag->setName("tag-{$i}");
+            $tags[] = $tag;
+        }
+
+        return $tags;
     }
 
     public function testListTagsReturnsPaginatedTagsAndTotal(): void
     {
-        $tags = [];
-        for ($i = 1; $i <= 25; ++$i) {
-            $tag = $this->createMock(TagInterface::class);
-            $tag->method('getId')->willReturn($i);
-            $tag->method('getName')->willReturn("tag-{$i}");
-            $tags[] = $tag;
-        }
-
-        $this->tagRepository->method('findAll')->willReturn($tags);
+        $this->tagRepository->findAll()->willReturn($this->tags(25));
 
         $result = $this->tool->listTags();
 
@@ -57,15 +72,7 @@ final class TagListToolTest extends TestCase
 
     public function testListTagsSecondPageReturnsCorrectSlice(): void
     {
-        $tags = [];
-        for ($i = 1; $i <= 25; ++$i) {
-            $tag = $this->createMock(TagInterface::class);
-            $tag->method('getId')->willReturn($i);
-            $tag->method('getName')->willReturn("tag-{$i}");
-            $tags[] = $tag;
-        }
-
-        $this->tagRepository->method('findAll')->willReturn($tags);
+        $this->tagRepository->findAll()->willReturn($this->tags(25));
 
         $result = $this->tool->listTags(2, 20);
 
@@ -77,15 +84,7 @@ final class TagListToolTest extends TestCase
 
     public function testListTagsCustomLimit(): void
     {
-        $tags = [];
-        for ($i = 1; $i <= 10; ++$i) {
-            $tag = $this->createMock(TagInterface::class);
-            $tag->method('getId')->willReturn($i);
-            $tag->method('getName')->willReturn("tag-{$i}");
-            $tags[] = $tag;
-        }
-
-        $this->tagRepository->method('findAll')->willReturn($tags);
+        $this->tagRepository->findAll()->willReturn($this->tags(10));
 
         $result = $this->tool->listTags(1, 3);
 
@@ -97,7 +96,7 @@ final class TagListToolTest extends TestCase
 
     public function testListTagsReturnsEmptyResultWhenNoTags(): void
     {
-        $this->tagRepository->method('findAll')->willReturn([]);
+        $this->tagRepository->findAll()->willReturn([]);
 
         $result = $this->tool->listTags();
 
@@ -107,8 +106,7 @@ final class TagListToolTest extends TestCase
 
     public function testListTagsReturnsErrorOnFailure(): void
     {
-        $this->tagRepository->method('findAll')
-            ->willThrowException(new \RuntimeException('DB error'));
+        $this->tagRepository->findAll()->willThrow(new \RuntimeException('DB error'));
 
         $result = $this->tool->listTags();
 
