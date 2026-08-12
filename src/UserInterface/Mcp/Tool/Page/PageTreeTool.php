@@ -22,6 +22,7 @@ use Sulu\Mcp\Application\Security\AccessControlFilterFactory;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Page\Domain\Model\PageDimensionContentInterface;
 use Sulu\Page\Domain\Model\PageInterface;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
@@ -45,6 +46,35 @@ class PageTreeTool
     #[McpTool(
         name: 'sulu_page_tree',
         description: 'Get the page tree as a nested hierarchy for a webspace. Each node contains uuid, title, url, template, and a "children" array with the same structure. Shows the site structure — use this to find the parentId when creating new pages, or to understand the site navigation. Root-level pages are direct children of the webspace root. Accepts an optional maxDepth to limit response size on deep site trees; when a node has hasChildren:true but children:[] the branch was depth-truncated — request again with a higher maxDepth or fetch that branch separately.',
+        outputSchema: [
+            '$id' => 'urn:sulu-mcp:page-tree-output',
+            'type' => 'object',
+            'properties' => [
+                'webspace' => ['type' => 'string'],
+                'locale' => ['type' => 'string'],
+                'tree' => ['type' => 'array', 'items' => ['$ref' => '#/$defs/PageTreeNode']],
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+            'required' => ['webspace', 'locale', 'tree'],
+            '$defs' => [
+                'PageTreeNode' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'uuid' => ['type' => 'string'],
+                        'title' => ['type' => ['string', 'null']],
+                        'url' => ['type' => ['string', 'null']],
+                        'templateKey' => ['type' => ['string', 'null']],
+                        'hasChildren' => ['type' => 'boolean'],
+                        'parentUuid' => ['type' => ['string', 'null']],
+                        'depth' => ['type' => 'integer'],
+                        'workflowPlace' => ['type' => ['string', 'null']],
+                        'availableLocales' => ['type' => ['array', 'null'], 'items' => ['type' => 'string']],
+                        'children' => ['type' => 'array', 'items' => ['$ref' => '#/$defs/PageTreeNode']],
+                    ],
+                    'required' => ['uuid', 'title', 'url', 'templateKey', 'hasChildren', 'parentUuid', 'depth', 'workflowPlace', 'availableLocales', 'children'],
+                ],
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.webspaces.#context#', PermissionTypes::VIEW)],

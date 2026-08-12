@@ -23,6 +23,7 @@ use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 
 /**
  * @internal
@@ -41,6 +42,21 @@ class MediaGetTool
     #[McpTool(
         name: 'sulu_media_get',
         description: 'Get detailed information about a media file by ID. Returns metadata (title, description, copyright, mime type, size), the original URL, and all available format/thumbnail URLs.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                'id' => ['type' => 'integer'],
+                'title' => ['type' => ['string', 'null']],
+                'description' => ['type' => ['string', 'null']],
+                'copyright' => ['type' => ['string', 'null']],
+                'mimeType' => ['type' => ['string', 'null']],
+                'size' => ['type' => 'integer'],
+                'url' => ['type' => 'string'],
+                'formats' => OutputSchema::FREEFORM_OBJECT,
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.media.collections', PermissionTypes::VIEW)],

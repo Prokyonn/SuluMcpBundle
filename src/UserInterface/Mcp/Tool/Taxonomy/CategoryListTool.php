@@ -20,6 +20,7 @@ use Sulu\Bundle\CategoryBundle\Category\CategoryManagerInterface;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 
 /**
  * @internal
@@ -37,6 +38,28 @@ class CategoryListTool
     #[McpTool(
         name: 'sulu_category_list',
         description: 'List all categories as a tree structure. Returns hierarchical array with nested children. Each category has id, name, key, hasChildren, and children array. Accepts an optional maxDepth to limit response size on deep category trees; when a node has hasChildren:true but children:[] the branch was depth-truncated — request again with a higher maxDepth or fetch that branch separately.',
+        outputSchema: [
+            '$id' => 'urn:sulu-mcp:category-list-output',
+            'type' => 'object',
+            'properties' => [
+                'categories' => ['type' => 'array', 'items' => ['$ref' => '#/$defs/CategoryNode']],
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+            '$defs' => [
+                'CategoryNode' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'id' => ['type' => 'integer'],
+                        'name' => ['type' => ['string', 'null']],
+                        'key' => ['type' => 'string'],
+                        'hasChildren' => ['type' => 'boolean'],
+                        'children' => ['type' => 'array', 'items' => ['$ref' => '#/$defs/CategoryNode']],
+                    ],
+                    'required' => ['id', 'name', 'key', 'hasChildren', 'children'],
+                ],
+            ],
+        ],
     )]
     #[RequiresPermission(requirements: [
         new PermissionRequirement('sulu.settings.categories', PermissionTypes::VIEW),

@@ -24,6 +24,7 @@ use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Page\Domain\Exception\PageNotFoundException;
 use Sulu\Page\Domain\Model\Page;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
@@ -48,6 +49,17 @@ class PageGetTool
     #[McpTool(
         name: 'sulu_page_get',
         description: 'Get a single page by its UUID. Returns draft metadata, template fields, block summaries (index, _id, type, title), and SEO/excerpt data. Use sulu_block_list with type="page" to fetch full block content. Always call this before sulu_page_update.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                'uuid' => ['type' => 'string'],
+                'webspace' => ['type' => 'string'],
+                'locale' => ['type' => 'string'],
+                'data' => OutputSchema::FREEFORM_OBJECT,
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.webspaces.#context#', PermissionTypes::VIEW)],

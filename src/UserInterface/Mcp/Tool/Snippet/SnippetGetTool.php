@@ -20,6 +20,7 @@ use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Application\Content\ContentNormalizerTrait;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Snippet\Domain\Exception\SnippetNotFoundException;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 
@@ -42,6 +43,16 @@ class SnippetGetTool
     #[McpTool(
         name: 'sulu_snippet_get',
         description: 'Get a snippet by UUID. Snippets are reusable content blocks (e.g., contact info, footer content) shared across pages. Returns full content data. Snippets are global — not scoped to a webspace.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                'uuid' => ['type' => 'string'],
+                'locale' => ['type' => 'string'],
+                'data' => OutputSchema::FREEFORM_OBJECT,
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(requirements: [
         new PermissionRequirement('sulu.snippet.snippets', PermissionTypes::VIEW),

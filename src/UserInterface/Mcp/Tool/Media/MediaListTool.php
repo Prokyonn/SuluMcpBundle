@@ -24,6 +24,7 @@ use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 
 /**
  * @internal
@@ -45,6 +46,30 @@ class MediaListTool
     #[McpTool(
         name: 'sulu_media_list',
         description: 'List/search media files. Filter by collection ID, media types, or search text. Note: tag-based filtering is not supported — use search text instead. Returns paginated list with total count.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                'media' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'title' => ['type' => ['string', 'null']],
+                            'mimeType' => ['type' => ['string', 'null']],
+                            'size' => ['type' => 'integer'],
+                            'url' => ['type' => 'string'],
+                        ],
+                        'required' => ['id', 'title', 'mimeType', 'size', 'url'],
+                    ],
+                ],
+                'total' => ['type' => 'integer'],
+                'limit' => ['type' => 'integer'],
+                'page' => ['type' => 'integer'],
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+            'required' => ['media', 'total', 'limit', 'page'],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.media.collections', PermissionTypes::VIEW)],
