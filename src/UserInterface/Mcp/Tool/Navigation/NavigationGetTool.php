@@ -19,6 +19,7 @@ use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Mcp\Application\Security\WebspacePermissionResolver;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Page\Domain\Repository\NavigationRepositoryInterface;
 
 /**
@@ -38,6 +39,20 @@ class NavigationGetTool
     #[McpTool(
         name: 'sulu_navigation_get',
         description: 'Get the published navigation tree of a webspace for one navigation context. Returns nodes with title, url, targetType, and nested "children". Only published (live) pages that are assigned to the given navigation context appear — a page missing here may simply be unpublished or not assigned to the context. Context keys are defined per webspace in config/webspaces/*.xml under <navigation><contexts> (commonly "main" or "footer"); use sulu_get_context to discover webspaces. Use sulu_page_tree instead when you need the full page hierarchy including drafts.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                // Present on the not-permitted and success paths, but not the catch path.
+                'webspace' => ['type' => 'string'],
+                // Node shape comes straight from NavigationRepository (an external
+                // dependency this tool doesn't control), so kept permissive.
+                'navigation' => ['type' => 'array', 'items' => OutputSchema::FREEFORM_OBJECT],
+                'locale' => ['type' => 'string'],
+                'context' => ['type' => 'string'],
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.webspaces.#context#', PermissionTypes::VIEW)],

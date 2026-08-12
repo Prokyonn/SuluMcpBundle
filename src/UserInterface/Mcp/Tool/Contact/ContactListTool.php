@@ -19,6 +19,7 @@ use Sulu\Bundle\ContactBundle\Entity\ContactRepositoryInterface;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 
 /**
  * @internal
@@ -37,6 +38,18 @@ class ContactListTool
     #[McpTool(
         name: 'sulu_contact_list',
         description: 'List contacts or accounts. Set type="contact" for people or type="account" for organizations. Returns basic info (id, name). Contacts and accounts are used for author attribution and organizational references in content.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                // Present only on success; the exception path returns error/hint instead.
+                // Item shape depends on "type": accounts carry id/name, contacts carry
+                // id/firstName/lastName — kept permissive rather than encoding both.
+                'items' => ['type' => 'array', 'items' => OutputSchema::FREEFORM_OBJECT],
+                'type' => ['type' => 'string'],
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('#context#', PermissionTypes::VIEW)],

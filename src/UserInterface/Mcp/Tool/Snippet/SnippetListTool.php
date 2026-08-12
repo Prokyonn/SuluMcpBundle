@@ -19,6 +19,7 @@ use Sulu\Content\Application\ContentManager\ContentManagerInterface;
 use Sulu\Content\Domain\Model\DimensionContentInterface;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 
 /**
@@ -47,6 +48,25 @@ class SnippetListTool
     #[McpTool(
         name: 'sulu_snippet_list',
         description: 'List snippets with optional template filter. Snippets are global reusable content. Returns lightweight summaries (title, template, workflow state, dates) — no blocks or HTML content. Use sulu_snippet_get with a UUID to fetch the full content of a specific snippet. Results are paginated — use "page" and "limit" to control.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                // Present only on success; the exception path returns "error" only (no "hint").
+                'snippets' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'uuid' => ['type' => 'string'],
+                            'data' => OutputSchema::FREEFORM_OBJECT,
+                        ],
+                        'required' => ['uuid', 'data'],
+                    ],
+                ],
+                ...OutputSchema::PAGINATION_PROPERTIES,
+                'error' => OutputSchema::ERROR_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(requirements: [
         new PermissionRequirement('sulu.snippet.snippets', PermissionTypes::VIEW),

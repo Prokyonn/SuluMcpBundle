@@ -26,6 +26,7 @@ use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 
 /**
  * @internal
@@ -48,6 +49,18 @@ class ArticleGetTool
     #[McpTool(
         name: 'sulu_article_get',
         description: 'Get a single article by its UUID. Returns draft metadata, template fields, block summaries (index, _id, type, title), and SEO/excerpt data. Use sulu_block_list with type="article" to fetch full block content. Always call this before sulu_article_update.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                // Present only on success; the not-found path returns error/hint instead.
+                'uuid' => ['type' => 'string'],
+                'locale' => ['type' => 'string'],
+                'data' => OutputSchema::FREEFORM_OBJECT,
+                // Present only when the article could not be found.
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('sulu.article.articles', PermissionTypes::VIEW)],
