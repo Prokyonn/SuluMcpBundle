@@ -58,7 +58,7 @@ final class FilteredRegistryTest extends TestCase
 
     /**
      * @param array<string, array{name: string, requirements: list<array{context: string, permission: string}>, contextArgument: ?string, contextResolver: ?string, objectResolved: bool, discoveryContexts: list<string>}> $map
-     * @param ObjectProphecy<ToolPermissionCheckerInterface>                                                                                                                                                              $checker
+     * @param ObjectProphecy<ToolPermissionCheckerInterface>                                                                                                                                                                $checker
      */
     private function visibilityResolver(array $map, ObjectProphecy $checker): ToolVisibilityResolver
     {
