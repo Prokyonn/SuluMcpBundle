@@ -5,6 +5,7 @@ Sulu MCP Bundle is a Symfony bundle that turns a Sulu 3.x installation into an [
 ## Contents
 
 - [Configuration](configuration.md) — all bundle config options with examples.
+- [Output schemas](output-schemas.md) — the `outputSchema` convention for read tools.
 - [Content Assistant Prompt](CONTENT_ASSISTANT_PROMPT.md) — recommended system prompt for AI clients.
 - Client setup:
   - [Claude.ai](clients/claude-ai.md) — hosted web/desktop app, OAuth connector.
