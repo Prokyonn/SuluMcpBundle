@@ -15,25 +15,29 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Resource;
 
 use Mcp\Capability\Attribute\McpResource;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
-use Sulu\Bundle\AdminBundle\Metadata\MetadataInterface;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
 use Sulu\Mcp\UserInterface\Mcp\Resource\BlocksResource;
 
 #[CoversClass(BlocksResource::class)]
 final class BlockTypeResourceTest extends TestCase
 {
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
+    use ProphecyTrait;
+
+    /** @var ObjectProphecy<MetadataProviderInterface> */
+    private ObjectProphecy $formMetadataProvider;
     private BlocksResource $resource;
 
     protected function setUp(): void
     {
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->resource = new BlocksResource($this->formMetadataProvider);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
+        $this->resource = new BlocksResource($this->formMetadataProvider->reveal());
     }
 
     public function testGetBlocksDeduplicatesBlockTypesAcrossTemplates(): void
@@ -62,7 +66,7 @@ final class BlockTypeResourceTest extends TestCase
         $typedMetadata->addForm('template2', $form2);
 
         $this->formMetadataProvider
-            ->method('getMetadata')
+            ->getMetadata(Argument::cetera())
             ->willReturn($typedMetadata);
 
         $result = $this->resource->getBlocks();
@@ -97,7 +101,7 @@ final class BlockTypeResourceTest extends TestCase
         $typedMetadata->addForm('template2', $form2);
 
         $this->formMetadataProvider
-            ->method('getMetadata')
+            ->getMetadata(Argument::cetera())
             ->willReturn($typedMetadata);
 
         $result = $this->resource->getBlocks();
@@ -122,10 +126,10 @@ final class BlockTypeResourceTest extends TestCase
 
     public function testGetBlocksReturnsEmptyArrayWhenNoTemplates(): void
     {
-        $nonTypedMetadata = $this->createMock(MetadataInterface::class);
+        $nonTypedMetadata = new FormMetadata();
 
         $this->formMetadataProvider
-            ->method('getMetadata')
+            ->getMetadata(Argument::cetera())
             ->willReturn($nonTypedMetadata);
 
         $result = $this->resource->getBlocks();
