@@ -16,23 +16,21 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Article;
 use Mcp\Capability\Attribute\McpTool;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Article\Application\Message\ModifyArticleMessage;
-use Sulu\Article\Domain\Model\ArticleInterface;
+use Sulu\Article\Domain\Model\Article;
+use Sulu\Article\Domain\Model\ArticleDimensionContent;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
-use Sulu\Bundle\AdminBundle\Application\BlockIdGenerator\BlockIdGeneratorInterface;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormGroup;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
-use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
-use Sulu\Bundle\AdminBundle\Metadata\MetadataInterface;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
-use Sulu\Content\Domain\Model\DimensionContentInterface;
-use Sulu\Content\Domain\Model\TemplateInterface;
 use Sulu\Mcp\Application\Article\ArticleGroupResolver;
 use Sulu\Mcp\Application\Content\BlockDataValidator;
 use Sulu\Mcp\Application\Content\ContentMetadataMapper;
@@ -42,6 +40,8 @@ use Sulu\Mcp\Infrastructure\Sulu\AdminLink\ArticleAdminLinkProvider;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
 use Sulu\Mcp\Infrastructure\Symfony\Routing\AdminLinkGenerator;
 use Sulu\Mcp\Tests\Application\TestBundle\Admin\TestViewRegistry;
+use Sulu\Mcp\Tests\Unit\Fakes\FakeGroupProvider;
+use Sulu\Mcp\Tests\Unit\Fakes\SequentialBlockIdGenerator;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Article\ArticleUpdateTool;
 use Sulu\Messenger\Infrastructure\Symfony\Messenger\FlushMiddleware\EnableFlushStamp;
 use Symfony\Component\Messenger\Envelope;
@@ -52,57 +52,70 @@ use Symfony\Component\Routing\RouterInterface;
 #[CoversClass(ArticleUpdateTool::class)]
 final class ArticleUpdateToolTest extends TestCase
 {
-    private MessageBusInterface&MockObject $messageBus;
-    private ContentManagerInterface&MockObject $contentManager;
-    private ArticleRepositoryInterface&MockObject $articleRepository;
-    private BlockIdGeneratorInterface&MockObject $blockIdGenerator;
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
-    private MetadataProviderInterface&MockObject $mapperMetadataProvider;
+    use ProphecyTrait;
+
+    /** @var ObjectProphecy<MessageBusInterface> */
+    private ObjectProphecy $messageBus;
+
+    /** @var ObjectProphecy<ContentManagerInterface> */
+    private ObjectProphecy $contentManager;
+
+    /** @var ObjectProphecy<ArticleRepositoryInterface> */
+    private ObjectProphecy $articleRepository;
+
+    private SequentialBlockIdGenerator $blockIdGenerator;
+
+    /** @var ObjectProphecy<MetadataProviderInterface> */
+    private ObjectProphecy $formMetadataProvider;
+
+    /** @var ObjectProphecy<MetadataProviderInterface> */
+    private ObjectProphecy $mapperMetadataProvider;
+
     private ArticleGroupResolver $articleGroupResolver;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+
+    /** @var ObjectProphecy<ToolPermissionCheckerInterface> */
+    private ObjectProphecy $permissionChecker;
+
     private ArticleSecurityContextResolver $articleContextResolver;
     private ArticleUpdateTool $tool;
 
     protected function setUp(): void
     {
-        $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->articleRepository = $this->createMock(ArticleRepositoryInterface::class);
-        $this->blockIdGenerator = $this->createMock(BlockIdGeneratorInterface::class);
-        $this->blockIdGenerator->method('generateId')->willReturn('gen-id');
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
+        $this->messageBus = $this->prophesize(MessageBusInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->articleRepository = $this->prophesize(ArticleRepositoryInterface::class);
+        $this->blockIdGenerator = new SequentialBlockIdGenerator(['gen-id']);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
         // Default: provider returns a non-typed metadata so the validator skips strict checks.
-        $this->formMetadataProvider->method('getMetadata')->willReturn($this->createMock(MetadataInterface::class));
-        $this->mapperMetadataProvider = $this->createMock(MetadataProviderInterface::class);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
+        $this->mapperMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
         // Provide Sulu's native SEO/excerpt field names so the mapper places them correctly.
-        $this->mapperMetadataProvider->method('getMetadata')->willReturnCallback(
-            fn (string $key) => match ($key) {
-                'content_seo_metadata' => $this->makeFormMeta(['seo/title', 'seo/description', 'seo/keywords', 'seo/canonicalUrl', 'seoNoIndex', 'seoNoFollow', 'seoHideInSitemap']),
-                'content_excerpt_metadata' => $this->makeFormMeta(['excerpt/title', 'excerpt/more', 'excerpt/description', 'excerpt/icon', 'excerpt/image']),
-                'content_excerpt_taxonomies' => $this->makeFormMeta(['excerptCategories', 'excerptTags']),
-                default => $this->makeFormMeta([]),
-            },
+        $this->mapperMetadataProvider->getMetadata('content_seo_metadata', Argument::cetera())->willReturn(
+            $this->makeFormMeta(['seo/title', 'seo/description', 'seo/keywords', 'seo/canonicalUrl', 'seoNoIndex', 'seoNoFollow', 'seoHideInSitemap']),
         );
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
-        $adminLinkGenerator = new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]);
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([]);
-        $this->articleGroupResolver = new ArticleGroupResolver($groupProvider, $this->contentManager);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $contextGroupProvider = $this->createMock(GroupProviderInterface::class);
-        $contextGroupProvider->method('getGroups')->willReturn([]);
-        $this->articleContextResolver = new ArticleSecurityContextResolver($contextGroupProvider);
+        $this->mapperMetadataProvider->getMetadata('content_excerpt_metadata', Argument::cetera())->willReturn(
+            $this->makeFormMeta(['excerpt/title', 'excerpt/more', 'excerpt/description', 'excerpt/icon', 'excerpt/image']),
+        );
+        $this->mapperMetadataProvider->getMetadata('content_excerpt_taxonomies', Argument::cetera())->willReturn(
+            $this->makeFormMeta(['excerptCategories', 'excerptTags']),
+        );
+        $this->mapperMetadataProvider->getMetadata(Argument::cetera())->willReturn($this->makeFormMeta([]));
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
+        $adminLinkGenerator = new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]);
+        $this->articleGroupResolver = new ArticleGroupResolver(new FakeGroupProvider(), $this->contentManager->reveal());
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
+        $this->articleContextResolver = new ArticleSecurityContextResolver(new FakeGroupProvider());
         $this->tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
             $adminLinkGenerator,
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $this->articleContextResolver,
         );
     }
@@ -110,40 +123,45 @@ final class ArticleUpdateToolTest extends TestCase
     /** @param list<string> $names */
     private function makeFormMeta(array $names): FormMetadata
     {
-        $items = [];
+        $form = new FormMetadata();
         foreach ($names as $name) {
-            $field = $this->createMock(FieldMetadata::class);
-            $field->method('getName')->willReturn($name);
-            $items[$name] = $field;
+            $form->addItem(new FieldMetadata($name));
         }
-        $form = $this->createMock(FormMetadata::class);
-        $form->method('getItems')->willReturn($items);
 
         return $form;
     }
 
+    private function dispatchHandled(Article $article): \Closure
+    {
+        return static fn (array $args): Envelope => $args[0]->with(new HandledStamp($article, 'handler'));
+    }
+
+    private function dimensionContentWithTemplate(Article $article, string $templateKey): ArticleDimensionContent
+    {
+        $dimensionContent = $article->createDimensionContent();
+        $dimensionContent->setTemplateKey($templateKey);
+
+        return $dimensionContent;
+    }
+
     public function testUpdateArticleReadsCurrentStateMergesAndDispatches(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $currentArticle->method('getUuid')->willReturn('uuid-1');
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article('uuid-1');
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('blog');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old Title', 'template' => 'blog']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'blog'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old Title', 'template' => 'blog']);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle) {
-                $stamps = $envelope->all();
-                $this->assertArrayHasKey(EnableFlushStamp::class, $stamps);
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $stamps = $envelope->all();
+            self::assertArrayHasKey(EnableFlushStamp::class, $stamps);
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', 'New Title');
 
@@ -154,20 +172,15 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleMergesContentOverCurrentData(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'article' => '<p>Old</p>']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'article' => '<p>Old</p>']);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($updatedArticle, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())->will($this->dispatchHandled($updatedArticle))->shouldBeCalledOnce();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, ['article' => '<p>New</p>']);
 
@@ -176,8 +189,8 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleReturnsErrorOnException(): void
     {
-        $this->articleRepository->method('getOneBy')
-            ->willThrowException(new \RuntimeException('Article not found'));
+        $this->articleRepository->getOneBy(Argument::cetera())
+            ->willThrow(new \RuntimeException('Article not found'));
 
         $result = $this->tool->updateArticle('uuid-1', 'en', 'Title');
 
@@ -200,21 +213,15 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleThrowsToolCallExceptionWhenPermissionDenied(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
 
-        $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.article.articles', PermissionTypes::EDIT, 'en'));
+        $this->permissionChecker->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.article.articles', PermissionTypes::EDIT, 'en'));
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
@@ -223,48 +230,41 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleDeniesTemplateChangeIntoUnpermittedGroup(): void
     {
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('article'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $contextResolver = new ArticleSecurityContextResolver($groupProvider);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $contextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
 
         // User has EDIT on the base group (source context) but not on the blog group (target context).
-        $this->permissionChecker->method('check')->willReturnCallback(
-            function (string $context, string $permission, ?string $locale = null): void {
-                if ('sulu.article.articles_blog' === $context) {
-                    throw new PermissionDeniedException($context, $permission, $locale);
-                }
-            },
-        );
+        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args): void {
+            [$context, $permission, $locale] = [$args[0], $args[1], $args[2] ?? null];
+            if ('sulu.article.articles_blog' === $context) {
+                throw new PermissionDeniedException($context, $permission, $locale);
+            }
+        });
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
@@ -273,52 +273,41 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleAllowsTemplateChangeIntoPermittedGroup(): void
     {
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('article'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $contextResolver = new ArticleSecurityContextResolver($groupProvider);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $contextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'article']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         // User has EDIT on both the base group (source) and the blog group (target).
         $checkedContexts = [];
-        $this->permissionChecker->method('check')->willReturnCallback(
-            function (string $context) use (&$checkedContexts): void {
-                $checkedContexts[] = $context;
-            },
-        );
+        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+            $checkedContexts[] = $args[0];
+        });
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($updatedArticle, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())->will($this->dispatchHandled($updatedArticle))->shouldBeCalledOnce();
 
         $result = $tool->updateArticle('uuid-1', 'en', null, 'blog_article');
 
@@ -330,61 +319,52 @@ final class ArticleUpdateToolTest extends TestCase
     {
         // Regression guard: only the top-level `template` arg may request a group change;
         // content.template must have zero effect on the written template.
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('article'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $contextResolver = new ArticleSecurityContextResolver($groupProvider);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $contextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'article']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         // User has EDIT only on the base group; content can no longer influence the written
         // template, so the (denied) blog-group target check must never fire.
         $checkedContexts = [];
-        $this->permissionChecker->method('check')->willReturnCallback(
-            function (string $context, string $permission, ?string $locale = null) use (&$checkedContexts): void {
-                $checkedContexts[] = $context;
-                if ('sulu.article.articles_blog' === $context) {
-                    throw new PermissionDeniedException($context, $permission, $locale);
-                }
-            },
-        );
+        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+            $checkedContexts[] = $args[0];
+            if ('sulu.article.articles_blog' === $args[0]) {
+                throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
+            }
+        });
 
         $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle, &$capturedData) {
-                $capturedData = $envelope->getMessage()->getData();
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $capturedData = $envelope->getMessage()->getData();
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         // Bypass attempt: no top-level `template` arg -- the template is smuggled via content.template.
         $result = $tool->updateArticle('uuid-1', 'en', null, null, ['template' => 'blog_article']);
@@ -398,59 +378,50 @@ final class ArticleUpdateToolTest extends TestCase
     {
         // Regression guard: content.template=null used to null out $data['template'], skip the
         // target-group check, and let Sulu default the template — silently moving the group.
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('article'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $contextResolver = new ArticleSecurityContextResolver($groupProvider);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $contextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'article']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         $checkedContexts = [];
-        $this->permissionChecker->method('check')->willReturnCallback(
-            function (string $context, string $permission, ?string $locale = null) use (&$checkedContexts): void {
-                $checkedContexts[] = $context;
-                if ('sulu.article.articles_blog' === $context) {
-                    throw new PermissionDeniedException($context, $permission, $locale);
-                }
-            },
-        );
+        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+            $checkedContexts[] = $args[0];
+            if ('sulu.article.articles_blog' === $args[0]) {
+                throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
+            }
+        });
 
         $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle, &$capturedData) {
-                $capturedData = $envelope->getMessage()->getData();
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $capturedData = $envelope->getMessage()->getData();
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         $result = $tool->updateArticle('uuid-1', 'en', null, null, ['template' => null, 'article' => '<p>New</p>']);
 
@@ -461,25 +432,22 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleForcesAuthorizedLocaleOverContentSmuggling(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'article']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle, &$capturedData) {
-                $capturedData = $envelope->getMessage()->getData();
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $capturedData = $envelope->getMessage()->getData();
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         // Caller is authorized for locale 'en' only; content.locale attempts to smuggle 'de'.
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, ['locale' => 'de', 'article' => '<p>New</p>']);
@@ -490,56 +458,45 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleAllowsSameGroupContentEditWithoutTemplateChange(): void
     {
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([
+        $groupProvider = new FakeGroupProvider([
             (new FormGroup('default', 'Default'))->withTemplate('article'),
             (new FormGroup('blog', 'Blog'))->withTemplate('blog_article'),
         ]);
         $contextResolver = new ArticleSecurityContextResolver($groupProvider);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $contextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([
-            TemplateInterface::class,
-            DimensionContentInterface::class,
-        ]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'article']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'article']);
 
         // User has EDIT only on the base group, but content.template repeats the current
         // template, so no group change happens and the target check must not fire.
         $checkedContexts = [];
-        $this->permissionChecker->method('check')->willReturnCallback(
-            function (string $context, string $permission, ?string $locale = null) use (&$checkedContexts): void {
-                $checkedContexts[] = $context;
-                if ('sulu.article.articles_blog' === $context) {
-                    throw new PermissionDeniedException($context, $permission, $locale);
-                }
-            },
-        );
+        $this->permissionChecker->check(Argument::cetera())->will(static function (array $args) use (&$checkedContexts): void {
+            $checkedContexts[] = $args[0];
+            if ('sulu.article.articles_blog' === $args[0]) {
+                throw new PermissionDeniedException($args[0], $args[1], $args[2] ?? null);
+            }
+        });
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($updatedArticle, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())->will($this->dispatchHandled($updatedArticle))->shouldBeCalledOnce();
 
         $result = $tool->updateArticle('uuid-1', 'en', null, null, ['template' => 'article', 'article' => '<p>New</p>']);
 
@@ -549,20 +506,15 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleAcceptsValidUrlInContent(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([]);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn([]);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($updatedArticle, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())->will($this->dispatchHandled($updatedArticle))->shouldBeCalledOnce();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, ['url' => '/renamed']);
 
@@ -571,16 +523,13 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleNormalizesPageTreeRouteAlias(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn([
             'title' => 'Old',
             'url' => [
                 'page' => [
@@ -591,22 +540,22 @@ final class ArticleUpdateToolTest extends TestCase
             ],
         ]);
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle) {
-                $message = $envelope->getMessage();
-                $this->assertInstanceOf(ModifyArticleMessage::class, $message);
-                $this->assertSame([
-                    'page' => [
-                        'path' => '/blog',
-                        'uuid' => 'parent-page-uuid',
-                    ],
-                    'suffix' => 'new',
-                ], $message->getData()['url']);
-                $this->assertArrayNotHasKey('page', $message->getData());
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $message = $envelope->getMessage();
+            self::assertInstanceOf(ModifyArticleMessage::class, $message);
+            self::assertSame([
+                'page' => [
+                    'path' => '/blog',
+                    'uuid' => 'parent-page-uuid',
+                ],
+                'suffix' => 'new',
+            ], $message->getData()['url']);
+            self::assertArrayNotHasKey('page', $message->getData());
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, [
             'page' => [
@@ -621,15 +570,13 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleRejectsInvalidRoutingInContent(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([]);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn([]);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, ['url' => 'no-leading-slash']);
 
@@ -639,27 +586,24 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleAssignsBlockIdsToNestedBlocks(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('blog');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'blog']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'blog'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'blog']);
 
         $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle, &$capturedData) {
-                $message = $envelope->getMessage();
-                $this->assertInstanceOf(ModifyArticleMessage::class, $message);
-                $capturedData = $message->getData();
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedData): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $message = $envelope->getMessage();
+            self::assertInstanceOf(ModifyArticleMessage::class, $message);
+            $capturedData = $message->getData();
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         $this->tool->updateArticle('uuid-1', 'en', null, null, [
             'url' => '/my-article',
@@ -700,34 +644,32 @@ final class ArticleUpdateToolTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('blog', $template);
 
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->formMetadataProvider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'article' === $key ? $typed : null);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
+        $this->formMetadataProvider->getMetadata('article', Argument::cetera())->willReturn($typed);
+        $this->formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $this->tool = new ArticleUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            $this->articleRepository,
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            $this->articleRepository->reveal(),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new ContentMetadataMapper($this->mapperMetadataProvider),
-            new AdminLinkGenerator($router, [new ArticleAdminLinkProvider(new TestViewRegistry())]),
+            new ContentMetadataMapper($this->mapperMetadataProvider->reveal()),
+            new AdminLinkGenerator($router->reveal(), [new ArticleAdminLinkProvider(new TestViewRegistry())]),
             $this->articleGroupResolver,
-            $this->permissionChecker,
+            $this->permissionChecker->reveal(),
             $this->articleContextResolver,
         );
 
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $currentArticle = new Article();
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('blog');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'blog']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'blog'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'blog']);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->updateArticle('uuid-1', 'en', null, null, [
             'url' => '/my-article',
@@ -742,23 +684,19 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleReturnsCompactedData(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('article');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn([
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'article'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn([
             'title' => 'New Title',
             'id' => 42,
             'blocks' => [['_id' => 'b1', 'type' => 'text', 'content' => '<p>HTML</p>']],
         ]);
 
-        $this->messageBus->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($updatedArticle, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())->will($this->dispatchHandled($updatedArticle));
 
         $result = $this->tool->updateArticle('uuid-1', 'en', 'New Title');
 
@@ -772,25 +710,22 @@ final class ArticleUpdateToolTest extends TestCase
 
     public function testUpdateArticleSetsExcerptAndSeoInDispatchedData(): void
     {
-        $currentArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle = $this->createMock(ArticleInterface::class);
-        $updatedArticle->method('getUuid')->willReturn('uuid-1');
+        $currentArticle = new Article();
+        $updatedArticle = new Article('uuid-1');
 
-        $this->articleRepository->method('getOneBy')->willReturn($currentArticle);
+        $this->articleRepository->getOneBy(Argument::cetera())->willReturn($currentArticle);
 
-        $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-        $dimensionContent->method('getTemplateKey')->willReturn('blog');
-        $this->contentManager->method('resolve')->willReturn($dimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['title' => 'Old', 'template' => 'blog']);
+        $this->contentManager->resolve(Argument::cetera())->willReturn($this->dimensionContentWithTemplate($currentArticle, 'blog'));
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['title' => 'Old', 'template' => 'blog']);
 
         $capturedMessage = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($updatedArticle, &$capturedMessage) {
-                $capturedMessage = $envelope->getMessage();
+        $this->messageBus->dispatch(Argument::cetera())->will(static function (array $args) use ($updatedArticle, &$capturedMessage): Envelope {
+            /** @var Envelope $envelope */
+            $envelope = $args[0];
+            $capturedMessage = $envelope->getMessage();
 
-                return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
-            });
+            return $envelope->with(new HandledStamp($updatedArticle, 'handler'));
+        })->shouldBeCalledOnce();
 
         $this->tool->updateArticle(
             'uuid-1',
