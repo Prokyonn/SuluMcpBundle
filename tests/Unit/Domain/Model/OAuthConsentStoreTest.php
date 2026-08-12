@@ -16,7 +16,7 @@ namespace Sulu\Mcp\Tests\Unit\Domain\Model;
 use League\Bundle\OAuth2ServerBundle\Event\AuthorizationRequestResolveEvent;
 use League\Bundle\OAuth2ServerBundle\Model\Client;
 use League\Bundle\OAuth2ServerBundle\ValueObject\Scope;
-use League\OAuth2\Server\RequestTypes\AuthorizationRequestInterface;
+use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Sulu\Mcp\Domain\Model\OAuthConsentRequest;
@@ -107,9 +107,9 @@ final class OAuthConsentStoreTest extends TestCase
      */
     private function event(array $scopes): AuthorizationRequestResolveEvent
     {
-        $authorizationRequest = $this->createMock(AuthorizationRequestInterface::class);
-        $authorizationRequest->method('getRedirectUri')->willReturn('https://client.example.com/callback');
-        $authorizationRequest->method('getState')->willReturn('state-1');
+        $authorizationRequest = new AuthorizationRequest();
+        $authorizationRequest->setRedirectUri('https://client.example.com/callback');
+        $authorizationRequest->setState('state-1');
 
         return new AuthorizationRequestResolveEvent(
             $authorizationRequest,
