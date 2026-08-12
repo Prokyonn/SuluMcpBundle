@@ -15,14 +15,14 @@ namespace Sulu\Mcp\Tests\Unit\UserInterface\Mcp\Tool\Snippet;
 
 use Mcp\Capability\Attribute\McpTool;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
-use Sulu\Bundle\AdminBundle\Application\BlockIdGenerator\BlockIdGeneratorInterface;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FieldMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\FormMetadata;
 use Sulu\Bundle\AdminBundle\Metadata\FormMetadata\TypedFormMetadata;
-use Sulu\Bundle\AdminBundle\Metadata\MetadataInterface;
 use Sulu\Bundle\AdminBundle\Metadata\MetadataProviderInterface;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
 use Sulu\Content\Domain\Model\DimensionContentInterface;
@@ -31,13 +31,13 @@ use Sulu\Mcp\Application\Content\ContentTypeResolver;
 use Sulu\Mcp\Infrastructure\Sulu\AdminLink\SnippetAdminLinkProvider;
 use Sulu\Mcp\Infrastructure\Symfony\Routing\AdminLinkGenerator;
 use Sulu\Mcp\Tests\Application\TestBundle\Admin\TestViewRegistry;
+use Sulu\Mcp\Tests\Unit\Fakes\SequentialBlockIdGenerator;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Snippet\SnippetUpdateTool;
 use Sulu\Messenger\Infrastructure\Symfony\Messenger\FlushMiddleware\EnableFlushStamp;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
 use Sulu\Snippet\Application\Message\ModifySnippetMessage;
-use Sulu\Snippet\Domain\Model\SnippetInterface;
+use Sulu\Snippet\Domain\Model\Snippet;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
-use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Routing\RouterInterface;
@@ -45,61 +45,83 @@ use Symfony\Component\Routing\RouterInterface;
 #[CoversClass(SnippetUpdateTool::class)]
 final class SnippetUpdateToolTest extends TestCase
 {
-    private MessageBusInterface&MockObject $messageBus;
-    private ContentManagerInterface&MockObject $contentManager;
-    private PageRepositoryInterface&MockObject $pageRepository;
-    private ArticleRepositoryInterface&MockObject $articleRepository;
-    private SnippetRepositoryInterface&MockObject $snippetRepository;
-    private MetadataProviderInterface&MockObject $formMetadataProvider;
-    private BlockIdGeneratorInterface&MockObject $blockIdGenerator;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<MessageBusInterface>
+     */
+    private ObjectProphecy $messageBus;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
+    /**
+     * @var ObjectProphecy<PageRepositoryInterface>
+     */
+    private ObjectProphecy $pageRepository;
+
+    /**
+     * @var ObjectProphecy<ArticleRepositoryInterface>
+     */
+    private ObjectProphecy $articleRepository;
+
+    /**
+     * @var ObjectProphecy<SnippetRepositoryInterface>
+     */
+    private ObjectProphecy $snippetRepository;
+
+    /**
+     * @var ObjectProphecy<MetadataProviderInterface>
+     */
+    private ObjectProphecy $formMetadataProvider;
+
+    private SequentialBlockIdGenerator $blockIdGenerator;
     private SnippetUpdateTool $tool;
 
     protected function setUp(): void
     {
-        $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->pageRepository = $this->createMock(PageRepositoryInterface::class);
-        $this->articleRepository = $this->createMock(ArticleRepositoryInterface::class);
-        $this->snippetRepository = $this->createMock(SnippetRepositoryInterface::class);
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
+        $this->messageBus = $this->prophesize(MessageBusInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->pageRepository = $this->prophesize(PageRepositoryInterface::class);
+        $this->articleRepository = $this->prophesize(ArticleRepositoryInterface::class);
+        $this->snippetRepository = $this->prophesize(SnippetRepositoryInterface::class);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
         // Default: provider returns a non-typed metadata so the validator skips strict checks.
-        $this->formMetadataProvider->method('getMetadata')->willReturn($this->createMock(MetadataInterface::class));
-        $this->blockIdGenerator = $this->createMock(BlockIdGeneratorInterface::class);
-        $this->blockIdGenerator->method('generateId')->willReturn('gen-id');
+        $this->formMetadataProvider->getMetadata(Argument::cetera())->willReturn(new FormMetadata());
+        $this->blockIdGenerator = new SequentialBlockIdGenerator();
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
-        $adminLinkGenerator = new AdminLinkGenerator($router, [new SnippetAdminLinkProvider(new TestViewRegistry())]);
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
+        $adminLinkGenerator = new AdminLinkGenerator($router->reveal(), [new SnippetAdminLinkProvider(new TestViewRegistry())]);
 
         $this->tool = new SnippetUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            new ContentTypeResolver($this->pageRepository, $this->articleRepository, $this->snippetRepository),
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            new ContentTypeResolver($this->pageRepository->reveal(), $this->articleRepository->reveal(), $this->snippetRepository->reveal()),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
             $adminLinkGenerator,
         );
     }
 
-    private function setUpReadModifyWrite(string $uuid, string $locale, array $currentData = []): SnippetInterface&MockObject
+    private function setUpReadModifyWrite(string $uuid, string $locale, array $currentData = []): Snippet
     {
-        $existingSnippet = $this->createMock(SnippetInterface::class);
-        $existingSnippet->method('getUuid')->willReturn($uuid);
+        $existingSnippet = new Snippet($uuid);
 
-        $this->snippetRepository->method('getOneBy')
-            ->with(
-                [
-                    'uuid' => $uuid,
-                    'locale' => $locale,
-                    'stage' => DimensionContentInterface::STAGE_DRAFT,
-                ],
-                [SnippetRepositoryInterface::GROUP_SELECT_SNIPPET_ADMIN => true],
-            )
-            ->willReturn($existingSnippet);
+        $this->snippetRepository->getOneBy(
+            [
+                'uuid' => $uuid,
+                'locale' => $locale,
+                'stage' => DimensionContentInterface::STAGE_DRAFT,
+            ],
+            [SnippetRepositoryInterface::GROUP_SELECT_SNIPPET_ADMIN => true],
+        )->willReturn($existingSnippet);
 
-        $currentDimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($currentDimensionContent);
-        $this->contentManager->method('normalize')->willReturn($currentData);
+        $currentDimensionContent = $existingSnippet->createDimensionContent();
+        $this->contentManager->resolve(Argument::cetera())->willReturn($currentDimensionContent);
+        $this->contentManager->normalize(Argument::cetera())->willReturn($currentData);
 
         return $existingSnippet;
     }
@@ -108,22 +130,21 @@ final class SnippetUpdateToolTest extends TestCase
     {
         $this->setUpReadModifyWrite('uuid-1', 'en', ['template' => 'default', 'title' => 'Old Title']);
 
-        $mockUpdatedSnippet = $this->createMock(SnippetInterface::class);
-        $mockUpdatedSnippet->method('getUuid')->willReturn('uuid-1');
+        $updatedSnippet = new Snippet('uuid-1');
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($mockUpdatedSnippet) {
-                $message = $envelope->getMessage();
-                $this->assertInstanceOf(ModifySnippetMessage::class, $message);
+        $capturedEnvelope = null;
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use ($updatedSnippet, &$capturedEnvelope) {
+                $capturedEnvelope = $args[0];
 
-                $stamps = $envelope->all();
-                $this->assertArrayHasKey(EnableFlushStamp::class, $stamps);
-
-                return $envelope->with(new HandledStamp($mockUpdatedSnippet, 'handler'));
+                return $args[0]->with(new HandledStamp($updatedSnippet, 'handler'));
             });
 
         $result = $this->tool->updateSnippet('uuid-1', 'en', 'New Title');
+
+        $this->assertInstanceOf(ModifySnippetMessage::class, $capturedEnvelope->getMessage());
+        $this->assertArrayHasKey(EnableFlushStamp::class, $capturedEnvelope->all());
 
         $this->assertTrue($result['success']);
     }
@@ -132,16 +153,15 @@ final class SnippetUpdateToolTest extends TestCase
     {
         $this->setUpReadModifyWrite('uuid-1', 'en', ['template' => 'default', 'title' => 'Old Title']);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
         $capturedMessage = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($mockSnippet, &$capturedMessage) {
-                $capturedMessage = $envelope->getMessage();
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use ($snippet, &$capturedMessage) {
+                $capturedMessage = $args[0]->getMessage();
 
-                return $envelope->with(new HandledStamp($mockSnippet, 'handler'));
+                return $args[0]->with(new HandledStamp($snippet, 'handler'));
             });
 
         $this->tool->updateSnippet('uuid-1', 'en', 'New Title');
@@ -158,21 +178,21 @@ final class SnippetUpdateToolTest extends TestCase
             'body' => '<p>Existing content</p>',
         ]);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($mockSnippet, &$capturedData) {
-                $message = $envelope->getMessage();
-                $this->assertInstanceOf(ModifySnippetMessage::class, $message);
-                $capturedData = $message->getData();
+        $capturedEnvelope = null;
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+                $capturedEnvelope = $args[0];
 
-                return $envelope->with(new HandledStamp($mockSnippet, 'handler'));
+                return $args[0]->with(new HandledStamp($snippet, 'handler'));
             });
 
         $this->tool->updateSnippet('uuid-1', 'en', null, null, ['body' => '<p>Updated</p>']);
+
+        $this->assertInstanceOf(ModifySnippetMessage::class, $capturedEnvelope->getMessage());
+        $capturedData = $capturedEnvelope->getMessage()->getData();
 
         $this->assertSame('default', $capturedData['template']);
         $this->assertSame('<p>Updated</p>', $capturedData['body']);
@@ -186,12 +206,11 @@ final class SnippetUpdateToolTest extends TestCase
             'body' => '<p>Old content</p>',
         ]);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($mockSnippet, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(fn (array $args) => $args[0]->with(new HandledStamp($snippet, 'handler')));
 
         $result = $this->tool->updateSnippet(
             'uuid-1',
@@ -208,11 +227,10 @@ final class SnippetUpdateToolTest extends TestCase
     {
         $this->setUpReadModifyWrite('uuid-1', 'en', ['template' => 'default', 'title' => 'Title']);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $this->messageBus->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($mockSnippet, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())
+            ->will(fn (array $args) => $args[0]->with(new HandledStamp($snippet, 'handler')));
 
         $result = $this->tool->updateSnippet('uuid-1', 'en', 'Updated Title');
 
@@ -223,8 +241,8 @@ final class SnippetUpdateToolTest extends TestCase
 
     public function testUpdateSnippetReturnsErrorWhenNotFound(): void
     {
-        $this->snippetRepository->method('getOneBy')
-            ->willThrowException(new \RuntimeException('Snippet not found'));
+        $this->snippetRepository->getOneBy(Argument::cetera())
+            ->willThrow(new \RuntimeException('Snippet not found'));
 
         $result = $this->tool->updateSnippet('non-existent', 'en', 'Title');
 
@@ -234,8 +252,8 @@ final class SnippetUpdateToolTest extends TestCase
 
     public function testUpdateSnippetReturnsErrorOnException(): void
     {
-        $this->snippetRepository->method('getOneBy')
-            ->willThrowException(new \RuntimeException('Snippet not found'));
+        $this->snippetRepository->getOneBy(Argument::cetera())
+            ->willThrow(new \RuntimeException('Snippet not found'));
 
         $result = $this->tool->updateSnippet('non-existent', 'en', 'Title');
 
@@ -258,18 +276,15 @@ final class SnippetUpdateToolTest extends TestCase
     {
         $this->setUpReadModifyWrite('uuid-1', 'en', ['template' => 'default', 'title' => 'Title']);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($mockSnippet, &$capturedData) {
-                $message = $envelope->getMessage();
-                $this->assertInstanceOf(ModifySnippetMessage::class, $message);
-                $capturedData = $message->getData();
+        $capturedEnvelope = null;
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+                $capturedEnvelope = $args[0];
 
-                return $envelope->with(new HandledStamp($mockSnippet, 'handler'));
+                return $args[0]->with(new HandledStamp($snippet, 'handler'));
             });
 
         $this->tool->updateSnippet(
@@ -287,7 +302,9 @@ final class SnippetUpdateToolTest extends TestCase
             ],
         );
 
-        $this->assertNotNull($capturedData);
+        $this->assertInstanceOf(ModifySnippetMessage::class, $capturedEnvelope->getMessage());
+        $capturedData = $capturedEnvelope->getMessage()->getData();
+
         $blocks = $capturedData['blocks'];
         $this->assertNotEmpty($blocks[0]['_id']);
         $this->assertNotEmpty($blocks[1]['_id']);
@@ -313,29 +330,27 @@ final class SnippetUpdateToolTest extends TestCase
         $typed = new TypedFormMetadata();
         $typed->addForm('default', $template);
 
-        $this->formMetadataProvider = $this->createMock(MetadataProviderInterface::class);
-        $this->formMetadataProvider->method('getMetadata')
-            ->willReturnCallback(fn (string $key) => 'snippet' === $key ? $typed : null);
+        $this->formMetadataProvider = $this->prophesize(MetadataProviderInterface::class);
+        $this->formMetadataProvider->getMetadata('snippet', Argument::cetera())->willReturn($typed);
 
-        $router = $this->createMock(RouterInterface::class);
-        $router->method('generate')->willReturn('https://example.com/admin/');
+        $router = $this->prophesize(RouterInterface::class);
+        $router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
         $this->tool = new SnippetUpdateTool(
-            $this->messageBus,
-            $this->contentManager,
-            new ContentTypeResolver($this->pageRepository, $this->articleRepository, $this->snippetRepository),
-            new BlockDataValidator($this->formMetadataProvider),
+            $this->messageBus->reveal(),
+            $this->contentManager->reveal(),
+            new ContentTypeResolver($this->pageRepository->reveal(), $this->articleRepository->reveal(), $this->snippetRepository->reveal()),
+            new BlockDataValidator($this->formMetadataProvider->reveal()),
             $this->blockIdGenerator,
-            new AdminLinkGenerator($router, [new SnippetAdminLinkProvider(new TestViewRegistry())]),
+            new AdminLinkGenerator($router->reveal(), [new SnippetAdminLinkProvider(new TestViewRegistry())]),
         );
 
-        $existingSnippet = $this->createMock(SnippetInterface::class);
-        $existingSnippet->method('getUuid')->willReturn('uuid-1');
-        $this->snippetRepository->method('getOneBy')->willReturn($existingSnippet);
-        $currentDimensionContent = $this->createMock(DimensionContentInterface::class);
-        $this->contentManager->method('resolve')->willReturn($currentDimensionContent);
-        $this->contentManager->method('normalize')->willReturn(['template' => 'default', 'title' => 'Title']);
+        $existingSnippet = new Snippet('uuid-1');
+        $this->snippetRepository->getOneBy(Argument::cetera())->willReturn($existingSnippet);
+        $currentDimensionContent = $existingSnippet->createDimensionContent();
+        $this->contentManager->resolve(Argument::cetera())->willReturn($currentDimensionContent);
+        $this->contentManager->normalize(Argument::cetera())->willReturn(['template' => 'default', 'title' => 'Title']);
 
-        $this->messageBus->expects($this->never())->method('dispatch');
+        $this->messageBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->updateSnippet(
             'uuid-1',
@@ -357,11 +372,10 @@ final class SnippetUpdateToolTest extends TestCase
             'blocks' => [['_id' => 'b1', 'type' => 'text', 'content' => '<p>HTML</p>']],
         ]);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $this->messageBus->method('dispatch')
-            ->willReturnCallback(fn (Envelope $envelope) => $envelope->with(new HandledStamp($mockSnippet, 'handler')));
+        $this->messageBus->dispatch(Argument::cetera())
+            ->will(fn (array $args) => $args[0]->with(new HandledStamp($snippet, 'handler')));
 
         $result = $this->tool->updateSnippet('uuid-1', 'en', 'Footer');
 
@@ -377,22 +391,22 @@ final class SnippetUpdateToolTest extends TestCase
     {
         $this->setUpReadModifyWrite('uuid-1', 'en', ['template' => 'default', 'title' => 'Old Title']);
 
-        $mockSnippet = $this->createMock(SnippetInterface::class);
-        $mockSnippet->method('getUuid')->willReturn('uuid-1');
+        $snippet = new Snippet('uuid-1');
 
-        $capturedData = null;
-        $this->messageBus->expects($this->once())
-            ->method('dispatch')
-            ->willReturnCallback(function (Envelope $envelope) use ($mockSnippet, &$capturedData) {
-                $capturedData = $envelope->getMessage()->getData();
+        $capturedEnvelope = null;
+        $this->messageBus->dispatch(Argument::cetera())
+            ->shouldBeCalledOnce()
+            ->will(function (array $args) use ($snippet, &$capturedEnvelope) {
+                $capturedEnvelope = $args[0];
 
-                return $envelope->with(new HandledStamp($mockSnippet, 'handler'));
+                return $args[0]->with(new HandledStamp($snippet, 'handler'));
             });
 
         // Caller is authorized for locale 'en' only; content.locale attempts to smuggle 'de'.
         $result = $this->tool->updateSnippet('uuid-1', 'en', null, null, ['locale' => 'de', 'body' => '<p>New</p>']);
 
         $this->assertTrue($result['success']);
+        $capturedData = $capturedEnvelope->getMessage()->getData();
         $this->assertSame('en', $capturedData['locale']);
     }
 
