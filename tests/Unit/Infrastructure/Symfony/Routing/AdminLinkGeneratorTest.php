@@ -14,8 +14,10 @@ declare(strict_types=1);
 namespace Sulu\Mcp\Tests\Unit\Infrastructure\Symfony\Routing;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\AdminBundle\Admin\View\View;
 use Sulu\Bundle\AdminBundle\Admin\View\ViewRegistry;
 use Sulu\Mcp\Infrastructure\Sulu\AdminLink\SnippetAdminLinkProvider;
@@ -26,30 +28,34 @@ use Symfony\Component\Routing\RouterInterface;
 #[CoversClass(AdminLinkGenerator::class)]
 final class AdminLinkGeneratorTest extends TestCase
 {
-    private RouterInterface&MockObject $router;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<RouterInterface>
+     */
+    private ObjectProphecy $router;
+
     private SnippetAdminLinkProvider $snippetProvider;
 
     protected function setUp(): void
     {
-        $this->router = $this->createMock(RouterInterface::class);
+        $this->router = $this->prophesize(RouterInterface::class);
 
-        $viewRegistry = $this->createMock(ViewRegistry::class);
-        $viewRegistry->method('findViewByName')->willReturnCallback(
-            static fn (string $name): View => new View($name, '/snippets/:locale/:id', 'form'),
-        );
+        $viewRegistry = $this->prophesize(ViewRegistry::class);
+        $viewRegistry->findViewByName(Argument::type('string'))
+            ->willReturn(new View('view', '/snippets/:locale/:id', 'form'));
 
-        $this->snippetProvider = new SnippetAdminLinkProvider($viewRegistry);
+        $this->snippetProvider = new SnippetAdminLinkProvider($viewRegistry->reveal());
     }
 
     public function testGenerateReturnsAbsoluteDeeplink(): void
     {
         $this->router
-            ->expects($this->once())
-            ->method('generate')
-            ->with('sulu_admin', [], UrlGeneratorInterface::ABSOLUTE_URL)
+            ->generate('sulu_admin', [], UrlGeneratorInterface::ABSOLUTE_URL)
+            ->shouldBeCalledOnce()
             ->willReturn('https://example.com/admin/');
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         $result = $generator->generate('snippet', ['locale' => 'en', 'uuid' => 'abc']);
 
@@ -58,11 +64,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateStripsTrailingSlashFromBase(): void
     {
-        $this->router
-            ->method('generate')
-            ->willReturn('https://example.com/admin/');
+        $this->router->generate(Argument::cetera())->willReturn('https://example.com/admin/');
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         $result = $generator->generate('snippet', ['locale' => 'en', 'uuid' => 'abc']);
 
@@ -72,9 +76,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateReturnsNullForUnknownType(): void
     {
-        $this->router->expects($this->never())->method('generate');
+        $this->router->generate(Argument::cetera())->shouldNotBeCalled();
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         $result = $generator->generate('unknown_type', ['locale' => 'en', 'uuid' => 'abc']);
 
@@ -83,9 +87,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateReturnsNullWhenProviderBuildPathReturnsNull(): void
     {
-        $this->router->expects($this->never())->method('generate');
+        $this->router->generate(Argument::cetera())->shouldNotBeCalled();
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         // Missing 'uuid' causes buildPath to return null
         $result = $generator->generate('snippet', ['locale' => 'en']);
@@ -95,11 +99,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateReturnsNullWhenRouterThrows(): void
     {
-        $this->router
-            ->method('generate')
-            ->willThrowException(new \RuntimeException('Route not found'));
+        $this->router->generate(Argument::cetera())->willThrow(new \RuntimeException('Route not found'));
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         $result = $generator->generate('snippet', ['locale' => 'en', 'uuid' => 'abc']);
 
@@ -108,9 +110,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateReturnsNullWhenProviderListIsEmpty(): void
     {
-        $this->router->expects($this->never())->method('generate');
+        $this->router->generate(Argument::cetera())->shouldNotBeCalled();
 
-        $generator = new AdminLinkGenerator($this->router, []);
+        $generator = new AdminLinkGenerator($this->router->reveal(), []);
 
         $result = $generator->generate('snippet', ['locale' => 'en', 'uuid' => 'abc']);
 
@@ -119,11 +121,9 @@ final class AdminLinkGeneratorTest extends TestCase
 
     public function testGenerateSkipsNonMatchingProviders(): void
     {
-        $this->router
-            ->method('generate')
-            ->willReturn('https://example.com/admin');
+        $this->router->generate(Argument::cetera())->willReturn('https://example.com/admin');
 
-        $generator = new AdminLinkGenerator($this->router, [$this->snippetProvider]);
+        $generator = new AdminLinkGenerator($this->router->reveal(), [$this->snippetProvider]);
 
         // 'media' type is not served by SnippetAdminLinkProvider
         $result = $generator->generate('media', ['locale' => 'en', 'id' => 42]);

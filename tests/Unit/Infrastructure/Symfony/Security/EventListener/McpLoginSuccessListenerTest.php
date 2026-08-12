@@ -15,6 +15,7 @@ namespace Sulu\Mcp\Tests\Unit\Infrastructure\Symfony\Security\EventListener;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Mcp\Infrastructure\Symfony\Security\EventListener\McpLoginSuccessListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -22,7 +23,11 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
+use Symfony\Component\Routing\Generator\UrlGenerator;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Routing\RequestContext;
+use Symfony\Component\Routing\Route;
+use Symfony\Component\Routing\RouteCollection;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Http\Authenticator\AuthenticatorInterface;
 use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
@@ -31,6 +36,8 @@ use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 #[CoversClass(McpLoginSuccessListener::class)]
 final class McpLoginSuccessListenerTest extends TestCase
 {
+    use ProphecyTrait;
+
     private const TARGET_PATH_KEY = '_security.admin.target_path';
     private const AUTHORIZE_URL = 'https://sulu.example.com/admin/mcp/authorize?response_type=code&client_id=abc&state=xyz';
     private const AUTHORIZE_RELATIVE = '/admin/mcp/authorize?response_type=code&client_id=abc&state=xyz';
@@ -150,9 +157,9 @@ final class McpLoginSuccessListenerTest extends TestCase
     private function event(string $firewallName, Request $request, ?Response $response): LoginSuccessEvent
     {
         return new LoginSuccessEvent(
-            $this->createMock(AuthenticatorInterface::class),
-            $this->createMock(Passport::class),
-            $this->createMock(TokenInterface::class),
+            $this->prophesize(AuthenticatorInterface::class)->reveal(),
+            $this->prophesize(Passport::class)->reveal(),
+            $this->prophesize(TokenInterface::class)->reveal(),
             $request,
             $response,
             $firewallName,
@@ -174,13 +181,9 @@ final class McpLoginSuccessListenerTest extends TestCase
 
     private function urlGenerator(): UrlGeneratorInterface
     {
-        $urlGenerator = $this->createMock(UrlGeneratorInterface::class);
-        $urlGenerator->method('generate')->willReturnCallback(
-            static fn (string $name): string => 'sulu_mcp_oauth_authorize' === $name
-                ? '/admin/mcp/authorize'
-                : self::fail('Unexpected route "'.$name.'".'),
-        );
+        $routes = new RouteCollection();
+        $routes->add('sulu_mcp_oauth_authorize', new Route('/admin/mcp/authorize'));
 
-        return $urlGenerator;
+        return new UrlGenerator($routes, new RequestContext());
     }
 }
