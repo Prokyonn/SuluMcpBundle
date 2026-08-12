@@ -15,8 +15,10 @@ namespace Sulu\Mcp\Tests\Unit\Infrastructure\Sulu\AdminLink;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Sulu\Bundle\AdminBundle\Admin\View\View;
 use Sulu\Bundle\AdminBundle\Admin\View\ViewRegistry;
 use Sulu\Bundle\AdminBundle\Exception\ViewNotFoundException;
@@ -26,23 +28,28 @@ use Sulu\Mcp\Infrastructure\Sulu\AdminLink\CategoryAdminLinkProvider;
 #[CoversClass(CategoryAdminLinkProvider::class)]
 final class CategoryAdminLinkProviderTest extends TestCase
 {
-    private ViewRegistry&MockObject $viewRegistry;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<ViewRegistry>
+     */
+    private ObjectProphecy $viewRegistry;
+
     private CategoryAdminLinkProvider $provider;
 
     protected function setUp(): void
     {
-        $this->viewRegistry = $this->createMock(ViewRegistry::class);
-        $this->viewRegistry->method('findViewByName')->willReturnCallback(
-            static function (string $name): View {
-                if (CategoryAdmin::EDIT_FORM_VIEW === $name) {
-                    return new View($name, '/categories/:locale/:id', 'form');
-                }
-
-                throw new ViewNotFoundException($name);
+        $this->viewRegistry = $this->prophesize(ViewRegistry::class);
+        $this->viewRegistry->findViewByName(CategoryAdmin::EDIT_FORM_VIEW)->willReturn(
+            new View(CategoryAdmin::EDIT_FORM_VIEW, '/categories/:locale/:id', 'form'),
+        );
+        $this->viewRegistry->findViewByName(Argument::any())->will(
+            static function (array $args): View {
+                throw new ViewNotFoundException($args[0]);
             }
         );
 
-        $this->provider = new CategoryAdminLinkProvider($this->viewRegistry);
+        $this->provider = new CategoryAdminLinkProvider($this->viewRegistry->reveal());
     }
 
     public function testGetTypeReturnsCategory(): void

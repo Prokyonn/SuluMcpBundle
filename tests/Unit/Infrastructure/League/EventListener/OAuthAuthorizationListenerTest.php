@@ -16,9 +16,11 @@ namespace Sulu\Mcp\Tests\Unit\Infrastructure\League\EventListener;
 use League\Bundle\OAuth2ServerBundle\Event\AuthorizationRequestResolveEvent;
 use League\Bundle\OAuth2ServerBundle\Model\Client;
 use League\Bundle\OAuth2ServerBundle\ValueObject\Scope;
-use League\OAuth2\Server\RequestTypes\AuthorizationRequestInterface;
+use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
 use Sulu\Mcp\Domain\Model\OAuthConsentRequest;
 use Sulu\Mcp\Infrastructure\League\EventListener\OAuthAuthorizationListener;
 use Sulu\Mcp\Infrastructure\Symfony\Security\OAuthConsentStore;
@@ -35,6 +37,8 @@ use Symfony\Component\Security\Core\User\UserInterface;
 #[CoversClass(OAuthConsentStore::class)]
 final class OAuthAuthorizationListenerTest extends TestCase
 {
+    use ProphecyTrait;
+
     public function testRedirectsAuthorizationRequestToConsentView(): void
     {
         $store = new OAuthConsentStore();
@@ -110,14 +114,10 @@ final class OAuthAuthorizationListenerTest extends TestCase
 
     private function urlGenerator(): UrlGeneratorInterface
     {
-        $urlGenerator = $this->createMock(UrlGeneratorInterface::class);
-        $urlGenerator->method('generate')->willReturnCallback(
-            static fn (string $name): string => 'sulu_admin' === $name
-                ? '/admin/'
-                : self::fail('Unexpected route "'.$name.'".'),
-        );
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate('sulu_admin', Argument::cetera())->willReturn('/admin/');
 
-        return $urlGenerator;
+        return $urlGenerator->reveal();
     }
 
     private function request(string $uri, ?Session $session = null): Request
@@ -130,9 +130,9 @@ final class OAuthAuthorizationListenerTest extends TestCase
 
     private function event(): AuthorizationRequestResolveEvent
     {
-        $authorizationRequest = $this->createMock(AuthorizationRequestInterface::class);
-        $authorizationRequest->method('getRedirectUri')->willReturn('https://chatgpt.com/oauth/callback');
-        $authorizationRequest->method('getState')->willReturn('state-1');
+        $authorizationRequest = new AuthorizationRequest();
+        $authorizationRequest->setRedirectUri('https://chatgpt.com/oauth/callback');
+        $authorizationRequest->setState('state-1');
 
         return new AuthorizationRequestResolveEvent(
             $authorizationRequest,
