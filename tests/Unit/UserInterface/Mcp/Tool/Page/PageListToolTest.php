@@ -249,7 +249,7 @@ final class PageListToolTest extends TestCase
     }
 
     /**
-     * Builds a PageListTool over Prophecy doubles, independent of the createMock()
+     * Builds a PageListTool over Prophecy doubles, independent of the
      * collaborators wired in setUp(). WebspacePermissionResolver is final and real
      * (granting 'example'), so it is reused as-is rather than doubled.
      *
