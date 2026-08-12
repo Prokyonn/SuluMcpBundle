@@ -187,9 +187,16 @@ final class BlocksResourceGlobalBlockTest extends TestCase
         $blockMetadata->addForm('heading', $globalHeading);
         $blockMetadata->addForm('text', $globalText);
 
-        // 'page' called once + 'block' called once (cached across both block types).
+        // getBlocks() scans page, article and snippet; 'block' is loaded once and cached
+        // across all three, which is what shouldBeCalledOnce() on 'block' pins down.
+        $emptyMetadata = new TypedFormMetadata();
+
         $this->formMetadataProvider->getMetadata('page', Argument::cetera())
             ->shouldBeCalledOnce()->willReturn($pageMetadata);
+        $this->formMetadataProvider->getMetadata('article', Argument::cetera())
+            ->shouldBeCalledOnce()->willReturn($emptyMetadata);
+        $this->formMetadataProvider->getMetadata('snippet', Argument::cetera())
+            ->shouldBeCalledOnce()->willReturn($emptyMetadata);
         $this->formMetadataProvider->getMetadata('block', Argument::cetera())
             ->shouldBeCalledOnce()->willReturn($blockMetadata);
 
