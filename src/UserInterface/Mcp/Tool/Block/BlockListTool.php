@@ -28,6 +28,7 @@ use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Domain\Security\PermissionRequirement;
 use Sulu\Mcp\Domain\Security\RequiresPermission;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
+use Sulu\Mcp\UserInterface\Mcp\Tool\OutputSchema;
 use Sulu\Page\Domain\Model\Page;
 
 /**
@@ -51,6 +52,18 @@ class BlockListTool
     #[McpTool(
         name: 'sulu_block_list',
         description: 'Get paginated block content for a page, article, or snippet. Use this after sulu_page_get / sulu_article_get / sulu_snippet_get which return block summaries (index, _id, type, title). Pass the "blockProperty" name (e.g. "blocks", "homeBlocks") and paginate with "page" and "limit". To list blocks inside a parent block (nested blocks), pass parentBlockId with the _id of the parent block — blockProperty is still required to locate the top-level blocks. Returns full block content including HTML for the requested range.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                // Present only on success; several early-return branches return only
+                // "error" (some add "hint") when the entity/property/block isn't found.
+                'blocks' => ['type' => 'array', 'items' => OutputSchema::FREEFORM_OBJECT],
+                ...OutputSchema::PAGINATION_PROPERTIES,
+                'offset' => ['type' => 'integer'],
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('#context#', PermissionTypes::VIEW)],

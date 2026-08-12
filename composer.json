@@ -47,6 +47,7 @@
         "symfony/dotenv": "^7.3",
         "doctrine/data-fixtures": "^2.2",
         "friendsofsymfony/jsrouting-bundle": "^3.6",
+        "phpspec/prophecy": "^1.18",
         "phpspec/prophecy-phpunit": "^2.0"
     },
     "autoload": {

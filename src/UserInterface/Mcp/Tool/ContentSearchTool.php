@@ -32,6 +32,25 @@ class ContentSearchTool
         'article' => 'articles',
     ];
 
+    /**
+     * Shared by the "items" (early-return) and "results" (success) properties
+     * below — both hold the same per-hit shape.
+     */
+    private const RESULT_ITEM_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'resourceKey' => ['type' => ['string', 'null']],
+            'resourceId' => ['type' => ['string', 'null']],
+            'locale' => ['type' => ['string', 'null']],
+            'title' => ['type' => ['string', 'null']],
+            'url' => ['type' => ['string', 'null']],
+            'webspaces' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'authoredAt' => ['type' => ['string', 'null']],
+            'metadata' => OutputSchema::FREEFORM_OBJECT,
+        ],
+        'required' => ['resourceKey', 'resourceId', 'locale', 'title', 'url', 'webspaces', 'authoredAt', 'metadata'],
+    ];
+
     public function __construct(
         private readonly EngineInterface $engine,
         private readonly WebspacePermissionResolver $webspacePermissionResolver,
@@ -44,6 +63,15 @@ class ContentSearchTool
     #[McpTool(
         name: 'sulu_content_search',
         description: 'Search published website content (articles and pages) by keyword. Searches both titles and full content text. Returns matching items with their UUID and resource type — use resourceKey to pick the right get tool (sulu_article_get or sulu_page_get) and resourceId as the UUID. Filter by type ("page" or "article") to restrict results to one content type. Filter by webspace to scope results to one site. Only published content is searchable.',
+        outputSchema: [
+            'type' => 'object',
+            'properties' => [
+                'results' => ['type' => 'array', 'items' => self::RESULT_ITEM_SCHEMA],
+                ...OutputSchema::PAGINATION_PROPERTIES,
+                'error' => OutputSchema::ERROR_PROPERTY,
+                'hint' => OutputSchema::HINT_PROPERTY,
+            ],
+        ],
     )]
     #[RequiresPermission(
         requirements: [new PermissionRequirement('#context#', PermissionTypes::VIEW)],
@@ -65,12 +93,12 @@ class ContentSearchTool
         // the caller may EDIT is the best available mirror.
         $permitted = $this->webspacePermissionResolver->permittedWebspaceKeys(PermissionTypes::VIEW, $locale);
         if ([] === $permitted) {
-            return ['items' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'];
+            return ['results' => [], 'total' => 0, 'hint' => 'No webspaces are readable with your permissions.'];
         }
 
         $effective = null !== $webspace ? array_values(array_intersect($permitted, [$webspace])) : $permitted;
         if ([] === $effective) {
-            return ['items' => [], 'total' => 0, 'hint' => \sprintf('Webspace "%s" is not readable with your permissions.', $webspace)];
+            return ['results' => [], 'total' => 0, 'hint' => \sprintf('Webspace "%s" is not readable with your permissions.', $webspace)];
         }
 
         try {
