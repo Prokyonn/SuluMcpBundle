@@ -17,24 +17,24 @@ use Mcp\Capability\Attribute\McpTool;
 use Mcp\Capability\Attribute\Schema;
 use Mcp\Exception\ToolCallException;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Sulu\Article\Domain\Model\ArticleInterface;
+use Prophecy\Argument;
+use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
+use Sulu\Article\Domain\Model\Article;
 use Sulu\Article\Domain\Repository\ArticleRepositoryInterface;
-use Sulu\Bundle\AdminBundle\Metadata\GroupProviderInterface;
 use Sulu\Bundle\PreviewBundle\Application\Manager\PreviewLinkManagerInterface;
-use Sulu\Bundle\PreviewBundle\Domain\Model\PreviewLinkInterface;
+use Sulu\Bundle\PreviewBundle\Domain\Model\PreviewLink;
 use Sulu\Component\Security\Authorization\PermissionTypes;
 use Sulu\Content\Application\ContentManager\ContentManagerInterface;
-use Sulu\Content\Domain\Model\DimensionContentInterface;
-use Sulu\Content\Domain\Model\TemplateInterface;
 use Sulu\Mcp\Application\Content\ContentTypeResolver;
 use Sulu\Mcp\Application\Security\ContentSecurityContextResolver;
 use Sulu\Mcp\Application\Security\ToolPermissionCheckerInterface;
 use Sulu\Mcp\Domain\Exception\PermissionDeniedException;
 use Sulu\Mcp\Infrastructure\Sulu\Security\ArticleSecurityContextResolver;
+use Sulu\Mcp\Tests\Unit\Fakes\FakeGroupProvider;
 use Sulu\Mcp\UserInterface\Mcp\Tool\Preview\PreviewLinkGenerateTool;
-use Sulu\Page\Domain\Model\PageInterface;
+use Sulu\Page\Domain\Model\Page;
 use Sulu\Page\Domain\Repository\PageRepositoryInterface;
 use Sulu\Snippet\Domain\Repository\SnippetRepositoryInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -43,49 +43,72 @@ use Symfony\Component\Routing\RouterInterface;
 #[CoversClass(PreviewLinkGenerateTool::class)]
 final class PreviewLinkGenerateToolTest extends TestCase
 {
-    private PreviewLinkManagerInterface&MockObject $previewLinkManager;
-    private RouterInterface&MockObject $router;
-    private PageRepositoryInterface&MockObject $pageRepository;
-    private ArticleRepositoryInterface&MockObject $articleRepository;
-    private ContentManagerInterface&MockObject $contentManager;
-    private ToolPermissionCheckerInterface&MockObject $permissionChecker;
+    use ProphecyTrait;
+
+    /**
+     * @var ObjectProphecy<PreviewLinkManagerInterface>
+     */
+    private ObjectProphecy $previewLinkManager;
+
+    /**
+     * @var ObjectProphecy<RouterInterface>
+     */
+    private ObjectProphecy $router;
+
+    /**
+     * @var ObjectProphecy<PageRepositoryInterface>
+     */
+    private ObjectProphecy $pageRepository;
+
+    /**
+     * @var ObjectProphecy<ArticleRepositoryInterface>
+     */
+    private ObjectProphecy $articleRepository;
+
+    /**
+     * @var ObjectProphecy<ContentManagerInterface>
+     */
+    private ObjectProphecy $contentManager;
+
+    /**
+     * @var ObjectProphecy<ToolPermissionCheckerInterface>
+     */
+    private ObjectProphecy $permissionChecker;
+
     private PreviewLinkGenerateTool $tool;
 
     protected function setUp(): void
     {
-        $this->previewLinkManager = $this->createMock(PreviewLinkManagerInterface::class);
-        $this->router = $this->createMock(RouterInterface::class);
-        $this->pageRepository = $this->createMock(PageRepositoryInterface::class);
-        $this->articleRepository = $this->createMock(ArticleRepositoryInterface::class);
-        $this->contentManager = $this->createMock(ContentManagerInterface::class);
-        $this->permissionChecker = $this->createMock(ToolPermissionCheckerInterface::class);
-        $groupProvider = $this->createMock(GroupProviderInterface::class);
-        $groupProvider->method('getGroups')->willReturn([]);
+        $this->previewLinkManager = $this->prophesize(PreviewLinkManagerInterface::class);
+        $this->router = $this->prophesize(RouterInterface::class);
+        $this->pageRepository = $this->prophesize(PageRepositoryInterface::class);
+        $this->articleRepository = $this->prophesize(ArticleRepositoryInterface::class);
+        $this->contentManager = $this->prophesize(ContentManagerInterface::class);
+        $this->permissionChecker = $this->prophesize(ToolPermissionCheckerInterface::class);
 
-        $snippetRepository = $this->createMock(SnippetRepositoryInterface::class);
+        $snippetRepository = $this->prophesize(SnippetRepositoryInterface::class);
 
         $this->tool = new PreviewLinkGenerateTool(
-            $this->previewLinkManager,
-            $this->router,
-            new ContentTypeResolver($this->pageRepository, $this->articleRepository, $snippetRepository),
-            $this->contentManager,
-            $this->permissionChecker,
-            new ContentSecurityContextResolver(new ArticleSecurityContextResolver($groupProvider)),
+            $this->previewLinkManager->reveal(),
+            $this->router->reveal(),
+            new ContentTypeResolver($this->pageRepository->reveal(), $this->articleRepository->reveal(), $snippetRepository->reveal()),
+            $this->contentManager->reveal(),
+            $this->permissionChecker->reveal(),
+            new ContentSecurityContextResolver(new ArticleSecurityContextResolver(new FakeGroupProvider())),
         );
     }
 
     private function setupEntity(string $type): void
     {
-        $entity = $this->createMock('page' === $type ? PageInterface::class : ArticleInterface::class);
-
         if ('page' === $type) {
-            $entity->method('getWebspaceKey')->willReturn('example');
-            $this->pageRepository->method('getOneBy')->willReturn($entity);
+            $entity = (new Page())->setWebspaceKey('example');
+            $this->pageRepository->getOneBy(Argument::cetera())->willReturn($entity);
         } else {
-            $this->articleRepository->method('getOneBy')->willReturn($entity);
-            $dimensionContent = $this->createMockForIntersectionOfInterfaces([TemplateInterface::class, DimensionContentInterface::class]);
-            $dimensionContent->method('getTemplateKey')->willReturn('default');
-            $this->contentManager->method('resolve')->willReturn($dimensionContent);
+            $entity = new Article();
+            $this->articleRepository->getOneBy(Argument::cetera())->willReturn($entity);
+            $dimensionContent = $entity->createDimensionContent();
+            $dimensionContent->setTemplateKey('default');
+            $this->contentManager->resolve(Argument::cetera())->willReturn($dimensionContent);
         }
     }
 
@@ -93,23 +116,17 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('page');
 
-        $previewLink = $this->createMock(PreviewLinkInterface::class);
-        $previewLink->method('getToken')->willReturn('abc123');
-        $previewLink->method('getResourceKey')->willReturn('pages');
-        $previewLink->method('getResourceId')->willReturn('page-uuid-1');
-        $previewLink->method('getLocale')->willReturn('en');
+        $previewLink = new PreviewLink('abc123', 'pages', 'page-uuid-1', 'en', ['webspaceKey' => 'example']);
 
         $this->previewLinkManager
-            ->expects($this->once())
-            ->method('generate')
-            ->with('pages', 'page-uuid-1', 'en', ['webspaceKey' => 'example'])
-            ->willReturn($previewLink);
+            ->generate('pages', 'page-uuid-1', 'en', ['webspaceKey' => 'example'])
+            ->willReturn($previewLink)
+            ->shouldBeCalledOnce();
 
         $this->router
-            ->expects($this->once())
-            ->method('generate')
-            ->with('sulu_preview.public_preview', ['token' => 'abc123'], UrlGeneratorInterface::ABSOLUTE_URL)
-            ->willReturn('https://example.com/preview/abc123');
+            ->generate('sulu_preview.public_preview', ['token' => 'abc123'], UrlGeneratorInterface::ABSOLUTE_URL)
+            ->willReturn('https://example.com/preview/abc123')
+            ->shouldBeCalledOnce();
 
         $result = $this->tool->generatePreviewLink('page', 'page-uuid-1', 'en', 'example');
 
@@ -125,23 +142,17 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('article');
 
-        $previewLink = $this->createMock(PreviewLinkInterface::class);
-        $previewLink->method('getToken')->willReturn('def456');
-        $previewLink->method('getResourceKey')->willReturn('articles');
-        $previewLink->method('getResourceId')->willReturn('article-uuid-1');
-        $previewLink->method('getLocale')->willReturn('de');
+        $previewLink = new PreviewLink('def456', 'articles', 'article-uuid-1', 'de', ['webspaceKey' => 'sulu']);
 
         $this->previewLinkManager
-            ->expects($this->once())
-            ->method('generate')
-            ->with('articles', 'article-uuid-1', 'de', ['webspaceKey' => 'sulu'])
-            ->willReturn($previewLink);
+            ->generate('articles', 'article-uuid-1', 'de', ['webspaceKey' => 'sulu'])
+            ->willReturn($previewLink)
+            ->shouldBeCalledOnce();
 
         $this->router
-            ->expects($this->once())
-            ->method('generate')
-            ->with('sulu_preview.public_preview', ['token' => 'def456'], UrlGeneratorInterface::ABSOLUTE_URL)
-            ->willReturn('https://example.com/preview/def456');
+            ->generate('sulu_preview.public_preview', ['token' => 'def456'], UrlGeneratorInterface::ABSOLUTE_URL)
+            ->willReturn('https://example.com/preview/def456')
+            ->shouldBeCalledOnce();
 
         $result = $this->tool->generatePreviewLink('article', 'article-uuid-1', 'de', 'sulu');
 
@@ -157,23 +168,19 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('article');
 
-        $previewLink = $this->createMock(PreviewLinkInterface::class);
-        $previewLink->method('getToken')->willReturn('tok');
-        $previewLink->method('getResourceKey')->willReturn('articles');
-        $previewLink->method('getResourceId')->willReturn('article-uuid-1');
-        $previewLink->method('getLocale')->willReturn('en');
+        $previewLink = new PreviewLink('tok', 'articles', 'article-uuid-1', 'en', []);
 
         $capturedResourceKey = null;
         $this->previewLinkManager
-            ->expects($this->once())
-            ->method('generate')
-            ->willReturnCallback(function (string $resourceKey) use (&$capturedResourceKey, $previewLink) {
-                $capturedResourceKey = $resourceKey;
+            ->generate(Argument::cetera())
+            ->will(static function (array $args) use (&$capturedResourceKey, $previewLink) {
+                $capturedResourceKey = $args[0];
 
                 return $previewLink;
-            });
+            })
+            ->shouldBeCalledOnce();
 
-        $this->router->method('generate')->willReturn('https://example.com/preview/tok');
+        $this->router->generate(Argument::cetera())->willReturn('https://example.com/preview/tok');
 
         $this->tool->generatePreviewLink('article', 'article-uuid-1', 'en', 'example');
 
@@ -182,7 +189,7 @@ final class PreviewLinkGenerateToolTest extends TestCase
 
     public function testGeneratePreviewLinkRejectsMissingWebspace(): void
     {
-        $this->previewLinkManager->expects($this->never())->method('generate');
+        $this->previewLinkManager->generate(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->generatePreviewLink('article', 'article-uuid-1', 'en');
 
@@ -195,16 +202,14 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('page');
 
-        $previewLink = $this->createMock(PreviewLinkInterface::class);
-        $previewLink->method('getToken')->willReturn('tok');
+        $previewLink = new PreviewLink('tok', 'pages', 'uuid-1', 'en', []);
 
         $this->previewLinkManager
-            ->expects($this->once())
-            ->method('generate')
-            ->with('pages', 'uuid-1', 'en', ['webspaceKey' => 'example'])
-            ->willReturn($previewLink);
+            ->generate('pages', 'uuid-1', 'en', ['webspaceKey' => 'example'])
+            ->willReturn($previewLink)
+            ->shouldBeCalledOnce();
 
-        $this->router->method('generate')->willReturn('https://example.com/preview/tok');
+        $this->router->generate(Argument::cetera())->willReturn('https://example.com/preview/tok');
 
         $this->tool->generatePreviewLink('page', 'uuid-1', 'en', 'example');
     }
@@ -217,7 +222,7 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('page');
 
-        $this->previewLinkManager->expects($this->never())->method('generate');
+        $this->previewLinkManager->generate(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
@@ -229,8 +234,8 @@ final class PreviewLinkGenerateToolTest extends TestCase
         $this->setupEntity('page');
 
         $this->previewLinkManager
-            ->method('generate')
-            ->willThrowException(new \RuntimeException('Resource not found'));
+            ->generate(Argument::cetera())
+            ->willThrow(new \RuntimeException('Resource not found'));
 
         $result = $this->tool->generatePreviewLink('page', 'bad-uuid', 'en', 'example');
 
@@ -241,8 +246,8 @@ final class PreviewLinkGenerateToolTest extends TestCase
 
     public function testEntityNotFoundReturnsErrorWithoutGenerate(): void
     {
-        $this->pageRepository->method('getOneBy')->willThrowException(new \RuntimeException('not found'));
-        $this->previewLinkManager->expects($this->never())->method('generate');
+        $this->pageRepository->getOneBy(Argument::cetera())->willThrow(new \RuntimeException('not found'));
+        $this->previewLinkManager->generate(Argument::cetera())->shouldNotBeCalled();
 
         $result = $this->tool->generatePreviewLink('page', 'missing-uuid', 'en', 'example');
 
@@ -253,11 +258,10 @@ final class PreviewLinkGenerateToolTest extends TestCase
     {
         $this->setupEntity('page');
 
-        $this->permissionChecker
-            ->method('check')
-            ->willThrowException(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::EDIT, 'en'));
+        $this->permissionChecker->check(Argument::cetera())
+            ->willThrow(new PermissionDeniedException('sulu.webspaces.example', PermissionTypes::EDIT, 'en'));
 
-        $this->previewLinkManager->expects($this->never())->method('generate');
+        $this->previewLinkManager->generate(Argument::cetera())->shouldNotBeCalled();
 
         $this->expectException(ToolCallException::class);
 
